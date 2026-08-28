@@ -24,5 +24,12 @@ router.use('/integrations', require('../modules/integrations/integrations.routes
 router.use('/system/worker', require('../modules/system/worker.routes'));
 router.use('/system', require('../modules/system/system.routes'));
 router.use('/export', require('../modules/export/export.routes'));
+router.use('/alerts', require('../modules/alerts/alerts.routes'));
+router.use('/inventory', require('../modules/inventory/inventory.routes'));
+router.use('/invoices', require('../modules/invoices/invoices.routes'));
+router.use('/vendors', require('../modules/vendors/vendors.routes'));
+router.use('/reviews', require('../modules/reviews/reviews.routes'));
+router.use('/reports', require('../modules/reports/reports.routes'));
+router.use('/chat', require('../modules/chat/chat.routes'));
 
 module.exports = router;

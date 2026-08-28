@@ -1,25 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
+import { AlertRow } from '../components/command-center/AlertRow'
 import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
 import { PriorityChip } from '../components/command-center/PriorityChip'
 import { RankingRow } from '../components/command-center/RankingRow'
+import { QueryState, CommandCenterSkeleton } from '../components/query'
 import { Button, Card, CircularProgress, Pill } from '../components/ui'
 import {
   analyticsApi,
   briefsApi,
-  type BriefRecord,
   type DashboardData,
 } from '../lib/api'
+import { useAsyncResource } from '../hooks/useAsyncResource'
 import {
+  alertLocationLine,
   briefHeadline,
   comparisonWeekdayLabel,
+  enrichPriorities,
   firstName,
   formatHeaderDate,
   formatPriorBusinessDay,
   healthStatusLabel,
   locationRankSubtitle,
   priorityDetail,
+  severityStatusLabel,
 } from '../lib/commandCenterHelpers'
 import { money } from '../lib/format'
 import { useAppState } from '../context/useAppState'
@@ -32,39 +37,43 @@ function locName(
   return typeof id === 'object' ? id.name : 'Location'
 }
 
+function locId(id: string | { _id: string; name: string } | null | undefined): string {
+  if (!id) return ''
+  return typeof id === 'object' ? id._id : String(id)
+}
+
 function priorityTitle(priority: DashboardData['priorities'][number]): string {
   if (priority.type === 'exceptions_above_normal') return 'Refund spike'
+  if (priority.type === 'vendor_price_increase') {
+    const name = priority.title.replace(/^Vendor price increase:\s*/i, '')
+    return name ? `${name} cost` : 'Vendor price increase'
+  }
+  if (priority.type === 'food_cost_above_target') return 'Food cost'
+  if (priority.type === 'review_replies_pending') return 'Review replies'
   if (priority.type === 'sales_below_normal') return 'Sales below normal'
-  if (priority.type === 'location_underperforming_peers') return 'Location needs attention'
   return priority.title
 }
 
 export function OverviewPage() {
-  const { query, locations, datePreset, selectedLocationId } = useAppState()
+  const { query, locations, datePreset } = useAppState()
   const { user } = useAuth()
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [brief, setBrief] = useState<BriefRecord | null>(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    const briefQuery: Record<string, string> =
-      query.from && query.to && query.from === query.to
-        ? { businessDate: query.from }
-        : {}
-    Promise.all([analyticsApi.dashboard(query), briefsApi.current(briefQuery)])
-      .then(([dashRes, briefRes]) => {
-        if (cancelled) return
-        setError('')
-        setData(dashRes.data)
-        setBrief(briefRes.data.brief)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Unable to load dashboard')
-      })
-    return () => { cancelled = true }
-  }, [query])
+  const { data: page, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    async () => {
+      const briefQuery: Record<string, string> =
+        query.from && query.to && query.from === query.to
+          ? { businessDate: query.from }
+          : {}
+      const [dashRes, briefRes] = await Promise.all([
+        analyticsApi.dashboard(query),
+        briefsApi.current(briefQuery),
+      ])
+      return { dashboard: dashRes.data, brief: briefRes.data.brief }
+    },
+    [query],
+    { fallbackError: 'Unable to load dashboard' },
+  )
+  const data = page?.dashboard ?? null
+  const brief = page?.brief ?? null
 
   const locationNames = useMemo(
     () => new Map(locations.map((l) => [l.id, l.name])),
@@ -78,12 +87,22 @@ export function OverviewPage() {
     : undefined
 
   const scores = data?.scores ?? []
-  const best = data?.bestLocation ?? (scores[0] ? { name: locName(scores[0].locationId), score: scores[0].score } : null)
-  const weakest = data?.weakestLocation ?? (scores.length ? { name: locName(scores[scores.length - 1].locationId), score: scores[scores.length - 1].score } : null)
+  const best = scores[0]
+  const weakest = scores.length ? scores[scores.length - 1] : null
   const briefContent = (brief?.content ?? {}) as Record<string, unknown>
-  const priorities = data?.priorities ?? []
+  const priorities = enrichPriorities(data?.priorities ?? [], data?.workflow)
   const healthChange = data?.businessHealthComparison.change ?? null
   const healthStatus = healthStatusLabel(healthChange)
+
+  const openAlertTypesByLocation = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const alert of data?.alerts ?? []) {
+      const id = typeof alert.locationId === 'object' && alert.locationId ? String(alert.locationId._id) : String(alert.locationId || 'org')
+      if (!map.has(id)) map.set(id, new Set())
+      map.get(id)!.add(alert.type)
+    }
+    return map
+  }, [data?.alerts])
 
   const greeting = (
     <p className="font-display text-xl italic text-accent-subtle-text md:text-2xl">
@@ -102,43 +121,27 @@ export function OverviewPage() {
       activeNav="overview"
       actions={greeting}
     >
-      {error && (
-        <Card accentBorder="brand" className="mb-4">
-          <p className="text-sm text-danger-subtle-text">{error}</p>
-        </Card>
-      )}
-
-      {!data ? (
-        <Card>
-          <p className="text-sm text-card-text-muted">Loading canonical metrics…</p>
-        </Card>
-      ) : (
+      <QueryState
+        data={page}
+        error={error}
+        isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        onRetry={reload}
+        loader={<CommandCenterSkeleton />}
+        className="mt-0"
+      >
+        {({ dashboard: data, brief }) => (
         <div className="space-y-5">
           <Card
-            className="border-l-[3px] border-l-accent"
+            className="border-accent-border/40 bg-gradient-to-br from-card via-card to-accent-subtle/20"
             padding="lg"
           >
-            <div className="flex items-start justify-between gap-4">
-              <p className="font-script text-[1.85rem] leading-none text-accent-subtle-text">
-                Your morning brief
-              </p>
-              <div className="flex shrink-0 gap-2">
-                <Link to="/morning-brief">
-                  <Button size="sm" variant="outline" shape="pill" className="px-4 font-medium text-card-text">
-                    Full brief
-                  </Button>
-                </Link>
-                <Link to="/morning-brief">
-                  <Button size="sm" variant="outline" shape="pill" className="px-4 font-medium text-card-text-muted">
-                    Past briefs
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            <div className="mt-5 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
-              <div>
-                <h2 className="text-xl font-semibold leading-snug text-card-text md:text-[1.35rem]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-lg italic text-accent-subtle-text">
+                  Your morning brief
+                </p>
+                <h2 className="mt-2 text-lg font-semibold leading-snug text-card-text md:text-xl">
                   {briefHeadline(data, briefContent)}
                 </h2>
                 <p className="mt-2 text-xs text-card-text-muted">
@@ -151,43 +154,54 @@ export function OverviewPage() {
                     : 'Brief not published yet'}
                   {' · dashboard'}
                   {brief?.emailStatus === 'sent' ? ' + email' : ''}
-                  {brief?.status === 'PARTIAL' ? ' · deterministic fallback available' : ''}
+                  {brief?.status === 'PARTIAL' ? ' · partial snapshot' : ''}
                 </p>
-
-                <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
-                  <div>
-                    <p className="text-[1.75rem] leading-none font-semibold tabular-nums text-card-text">
-                      {money(data.current.netMoney)}
-                    </p>
-                    <p className="mt-2 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
-                      {isSingleDay || datePreset === 'yesterday' ? 'Yesterday' : data.range.label} ·{' '}
-                      {selectedLocationId !== 'all' ? 'Selected store' : 'All stores'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xl leading-none font-semibold text-success-subtle-text">
-                      {best?.name ?? '—'}
-                    </p>
-                    <p className="mt-2 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
-                      Best performer
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xl leading-none font-semibold text-danger-subtle-text">
-                      {weakest?.name ?? '—'}
-                    </p>
-                    <p className="mt-2 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
-                      Weakest performer
-                    </p>
-                  </div>
-                </div>
               </div>
+              <div className="flex shrink-0 gap-2">
+                <Link to="/morning-brief">
+                  <Button size="sm" variant="outline" shape="pill">
+                    Full brief
+                  </Button>
+                </Link>
+                <Link to="/morning-brief">
+                  <Button size="sm" variant="outline" shape="pill">
+                    Past briefs
+                  </Button>
+                </Link>
+              </div>
+            </div>
 
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_minmax(14rem,1.1fr)]">
+              <div>
+                <p className="text-2xl font-semibold tabular-nums text-card-text">
+                  {money(data.current.netMoney)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
+                  {isSingleDay || datePreset === 'yesterday' ? 'Yesterday' : data.range.label} ·{' '}
+                  {query.locationId ? 'Selected store' : 'All stores'}
+                </p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-success-subtle-text">
+                  {best ? locName(best.locationId) : '—'}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
+                  Best performer
+                </p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-danger-subtle-text">
+                  {weakest ? locName(weakest.locationId) : '—'}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
+                  Weakest performer
+                </p>
+              </div>
               <div>
                 <p className="text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
                   Top priorities
                 </p>
-                <div className="mt-3 space-y-2">
+                <div className="mt-2 space-y-2">
                   {priorities.length === 0 ? (
                     <p className="text-xs text-card-text-muted">No material priorities.</p>
                   ) : (
@@ -198,7 +212,7 @@ export function OverviewPage() {
                         title={priorityTitle(p)}
                         detail={priorityDetail(
                           p,
-                          p.locationName ?? (p.locationId ? locationNames.get(String(p.locationId)) : undefined),
+                          p.locationId ? locationNames.get(String(p.locationId)) : undefined,
                         )}
                       />
                     ))
@@ -259,7 +273,7 @@ export function OverviewPage() {
                   </p>
                   <p className="mt-2 text-xs text-card-text-faint">
                     Sales-weighted average of the {scores.length || 'authorized'} location score
-                    {scores.length === 1 ? '' : 's'}. Formula v{data.businessHealthScoreVersion}.
+                    {scores.length === 1 ? '' : 's'}.
                   </p>
                   <button
                     type="button"
@@ -278,15 +292,19 @@ export function OverviewPage() {
                     No complete location score is available for the selected ending day.
                   </p>
                 ) : (
-                  scores.map((s) => (
+                  scores.map((s) => {
+                    const id = locId(s.locationId)
+                    const types = openAlertTypesByLocation.get(id) ?? new Set()
+                    return (
                       <RankingRow
                         key={s._id}
                         rank={s.rank}
                         name={locName(s.locationId)}
-                        subtitle={locationRankSubtitle(s)}
+                        subtitle={locationRankSubtitle(s, types)}
                         score={s.score == null ? null : Math.round(s.score)}
                       />
-                    ))
+                    )
+                  })
                 )}
               </div>
             </Card>
@@ -327,20 +345,34 @@ export function OverviewPage() {
             />
           </div>
 
-          <Card title="Exceptions" padding="md">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-card-text-faint">Refunds</p>
-                <p className="mt-1 text-lg font-semibold text-card-text">{money(data.signals.exceptions.refundMoney)}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-card-text-faint">Voids</p>
-                <p className="mt-1 text-lg font-semibold text-card-text">{money(data.signals.exceptions.voidMoney)}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-card-text-faint">Discounts</p>
-                <p className="mt-1 text-lg font-semibold text-card-text">{money(data.signals.exceptions.discountMoney)}</p>
-              </div>
+          <Card
+            title="Active alerts"
+            action={
+              <Link
+                to="/alerts"
+                className="text-xs font-medium text-accent-subtle-text hover:text-accent"
+              >
+                View all alerts →
+              </Link>
+            }
+            padding="md"
+          >
+            <div className="space-y-2">
+              {data.alerts.length === 0 ? (
+                <p className="text-sm text-card-text-muted">
+                  No open alerts in the selected scope.
+                </p>
+              ) : (
+                data.alerts.slice(0, 5).map((alert) => (
+                  <AlertRow
+                    key={alert._id}
+                    severity={alert.severity}
+                    title={alert.title}
+                    detail={alertLocationLine(alert, locationNames)}
+                    statusLabel={severityStatusLabel(alert.severity)}
+                  />
+                ))
+              )}
             </div>
           </Card>
 
@@ -361,7 +393,8 @@ export function OverviewPage() {
             <span>Coverage {data.coverage}% · scoped canonical metrics</span>
           </div>
         </div>
-      )}
+        )}
+      </QueryState>
     </AppShell>
   )
 }

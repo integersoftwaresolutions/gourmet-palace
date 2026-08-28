@@ -7,7 +7,7 @@ const Organization = require('../models/Organization');
 const Location = require('../models/Location');
 const DailyMetric = require('../models/DailyMetric');
 const Connection = require('../models/Connection');
-const { rebuildDaily, rebuildBaselinesAndScore } = require('../modules/analytics/analytics.service');
+const { rebuildDaily, rebuildBaselinesAndScore, rebuildForecast } = require('../modules/analytics/analytics.service');
 
 const TOAST_ROOT = path.resolve(__dirname, '../../../Toast');
 const FILES = [
@@ -165,6 +165,7 @@ async function main() {
     if (dates.length) {
       await rebuildDaily({ organizationId: org._id, locationId: location._id, businessDate: dates[dates.length - 1] });
       await rebuildBaselinesAndScore({ organizationId: org._id, locationId: location._id, businessDate: dates[dates.length - 1] });
+      await rebuildForecast({ organizationId: org._id, locationId: location._id, businessDate: dates[dates.length - 1] });
     }
     console.log(`${source.locationName}: ${days.length} days, ${ops.length} written, ${skippedSquare} square days skipped`);
     summary.push({ location: source.locationName, rows: days.length, upserted, skippedSquare, from: dates[0], to: dates[dates.length - 1] });

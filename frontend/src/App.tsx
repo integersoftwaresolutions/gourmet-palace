@@ -22,6 +22,7 @@ import { OperationsFoodCost } from './pages/OperationsFoodCost'
 import { OperationsIngredientInventory } from './pages/OperationsIngredientInventory'
 import { OperationsInvoices } from './pages/OperationsInvoices'
 import { OperationsVendors } from './pages/OperationsVendors'
+import { OperationsVendorDetail } from './pages/OperationsVendorDetail'
 import { OverviewPage } from './pages/OverviewPage'
 import { PerformanceFinance } from './pages/PerformanceFinance'
 import { PerformanceForecast } from './pages/PerformanceForecast'
@@ -144,6 +145,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <OperationsVendors />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/operations/vendors/:id"
+            element={
+              <ProtectedRoute>
+                <OperationsVendorDetail />
               </ProtectedRoute>
             }
           />

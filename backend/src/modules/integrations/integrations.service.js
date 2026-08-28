@@ -1,4 +1,4 @@
-const crypto=require('crypto');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const RawIngestEvent=require('../../models/RawIngestEvent');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/env');const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');
+const crypto=require('crypto');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const RawIngestEvent=require('../../models/RawIngestEvent');const SeoMetric=require('../../models/SeoMetric');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/env');const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');const google=require('./google.service');
 const squareBase=()=>env.square.environment==='production'?'https://connect.squareup.com':'https://connect.squareupsandbox.com';
 function publicConnection(c){if(!c)return null;const o=c.toJSON?c.toJSON():c;delete o.accessTokenEnc;delete o.refreshTokenEnc;delete o.secretRef;return o}
 async function list(organizationId){return (await Connection.find({organizationId}).sort({provider:1})).map(publicConnection)}
@@ -57,7 +57,7 @@ async function discoverSquare(organizationId){
   await conn.save();return publicConnection(conn)
 }
 async function setMappings(organizationId,provider,mappings){
-  if(!['square','toast'].includes(provider))throw new ApiError(400,'Unsupported provider');
+  if(!['square','toast','google'].includes(provider))throw new ApiError(400,'Unsupported provider');
   if(!mappings||typeof mappings!=='object'||Array.isArray(mappings))throw new ApiError(400,'mappings must be an object');
   if(mappings.locations&&typeof mappings.locations==='object'){for(const locationId of Object.keys(mappings.locations)){const location=await Location.findOne({_id:locationId,organizationId,status:'active'}).select('_id');if(!location)throw new ApiError(400,`Location mapping references an inactive or unknown location: ${locationId}`)}}
   if(provider==='square'){
@@ -139,6 +139,12 @@ async function squareSync({organizationId,locationId,businessDate,force=false,ig
     if(metric){
       metric.reconciliation=rec;if(!pass)metric.dataStatus='PARTIAL';await metric.save();
       await analytics.rebuildBaselinesAndScore({organizationId,locationId,businessDate});
+      await analytics.rebuildForecast({organizationId,locationId,businessDate});
+      if(channelsApproved){
+        await SeoMetric.findOneAndUpdate({organizationId,locationId,businessDate,source:'square_direct'},{metrics:{orders:filtered.filter(o=>o.state!=='CANCELED'&&channelFromSquare(o,channelMap)==='direct_online').length,revenue:metric.channels?.direct_online||0,mappingApproved:true},status:metric.dataStatus,rawRef,sourceTimestamp:rawEvent.sourceTimestamp,ingestTimestamp:new Date(),processingVersion,freshnessAt:new Date()},{upsert:true,new:true,setDefaultsOnInsert:true});
+      }else{
+        await SeoMetric.deleteMany({organizationId,locationId,businessDate,source:'square_direct'});
+      }
     }
     rawEvent.status=pass?'PROCESSED':'PARTIAL';rawEvent.metadata={...(rawEvent.metadata||{}),reconciliation:rec,sourceClosed};await rawEvent.save();
     const result={orders:filtered.filter(o=>o.state!=='CANCELED').length,canceled:filtered.filter(o=>o.state==='CANCELED').length,rawIngestId:rawEvent.id,reconciliation:rec,channelsApproved,catalogStatus:catalog.available?'COMPLETE':'UNAVAILABLE',paymentsStatus:conn.capabilities?.payments?'COMPLETE':'UNAVAILABLE',sourceClosed};job.status=pass?'COMPLETE':'PARTIAL';job.result=result;job.finishedAt=new Date();job.nextRetryAt=pass?null:new Date(Date.now()+Math.min(60*60000,Math.max(15*60000,2**Math.min(job.attempts||1,5)*60000)));await job.save();conn.lastSuccessAt=new Date();conn.status=pass?'READY':'PARTIAL';conn.lastError=pass?null:!conn.capabilities?.payments?'PAYMENTS_READ is unavailable; refund-dependent reconciliation remains Partial':!sourceClosed?'Source business day is still open':'Reconciliation outside tolerance';await conn.save();return result
@@ -165,8 +171,8 @@ async function toastImport({organizationId,locationId,fileName,base64,mapping={}
   }
   if(!groups.size)throw new ApiError(400,'Toast CSV did not contain any valid order rows');const prior=await RawIngestEvent.findOne({organizationId,provider:'toast',locationId,businessDate:'HISTORICAL_IMPORT',capability:'orders'}).sort({processingVersion:-1}).lean();const processingVersion=Number(prior?.processingVersion||0)+1;const rawEvent=await RawIngestEvent.create({organizationId,locationId,provider:'toast',businessDate:'HISTORICAL_IMPORT',capability:'orders',rawRef:archived,contentHash:archiveHash,recordCount:groups.size,processingVersion,status:'RECEIVED',metadata:{fileName:pathSafe(fileName||'toast-export.csv'),bytes:buffer.length}});
   let imported=0;for(const g of groups.values()){const existing=await Order.findOne({organizationId,provider:'toast',providerOrderId:g.providerOrderId}).select('processingVersion');await Order.findOneAndUpdate({organizationId,provider:'toast',providerOrderId:g.providerOrderId},{locationId:g.locationId||locationId,businessDate:g.businessDate,orderState:'COMPLETED',grossMoney:g.grossMoney,netMoney:g.netMoney,discountMoney:g.discountMoney,refundMoney:g.refundMoney,voidMoney:0,channel:g.channel,items:g.items,rawRef:archived,sourceTimestamp:new Date(`${g.businessDate}T12:00:00Z`),ingestTimestamp:new Date(),processingVersion:Number(existing?.processingVersion||0)+1,status:'COMPLETE'},{upsert:true,new:true,setDefaultsOnInsert:true});imported++}
-  const dates=[...new Set([...groups.values()].map(g=>g.businessDate))].sort();for(const d of dates){await analytics.rebuildDaily({organizationId,locationId,businessDate:d});await analytics.rebuildBaselinesAndScore({organizationId,locationId,businessDate:d})}
+  const dates=[...new Set([...groups.values()].map(g=>g.businessDate))].sort();for(const d of dates){await analytics.rebuildDaily({organizationId,locationId,businessDate:d});await analytics.rebuildBaselinesAndScore({organizationId,locationId,businessDate:d});await analytics.rebuildForecast({organizationId,locationId,businessDate:d})}
   rawEvent.status='PROCESSED';rawEvent.metadata={...(rawEvent.metadata||{}),imported,dates:dates.length};await rawEvent.save();await Connection.findOneAndUpdate({organizationId,provider:'toast'},{status:'READY',capabilities:{historicalImport:true,live:false},metadata:{lastArchiveKey:archived,lastArchiveHash:archiveHash,lastImportRows:imported,lastImportDates:dates.length,lastOriginalName:pathSafe(fileName||'toast-export.csv')},lastSuccessAt:new Date()},{upsert:true,new:true});return {imported,archiveKey:archived,archiveHash,dates:dates.length,rawIngestId:rawEvent.id}
 }
 const pathSafe=s=>String(s).replace(/[^a-zA-Z0-9._-]/g,'_');
-module.exports={list,squareConnect,squareCallback,discoverSquare,setMappings,squareSync,squareBackfill,toastImport};
+module.exports={list,squareConnect,squareCallback,discoverSquare,setMappings,squareSync,squareBackfill,toastImport,...google};

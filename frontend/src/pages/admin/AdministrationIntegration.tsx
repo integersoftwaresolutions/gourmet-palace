@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../components/layout/AppShell'
 import { AdminTabs } from '../../components/layout/SectionTabs'
+import { QueryError, QueryState, DualPanelSkeleton } from '../../components/query'
 import { Button, Card, Pill, Select } from '../../components/ui'
 import { integrationsApi, type ConnectionRecord } from '../../lib/api'
+import { asyncMessage } from '../../lib/asyncError'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { useAppState } from '../../context/useAppState'
 
 function toBase64(file: File) {
@@ -41,8 +44,12 @@ function squareDrafts(connections: ConnectionRecord[]) {
 export function AdministrationIntegration() {
   const { locations } = useAppState()
   const [searchParams] = useSearchParams()
-  const [rows, setRows] = useState<ConnectionRecord[]>([])
-  const [error, setError] = useState('')
+  const { data: rows, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    () => integrationsApi.list().then((r) => r.data.connections),
+    [],
+    { fallbackError: 'Unable to load connections' },
+  )
+  const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
   const [toastLoc, setToastLoc] = useState('')
   const [channels, setChannels] = useState<Record<ChannelKey, string>>(emptyChannels)
@@ -54,55 +61,47 @@ export function AdministrationIntegration() {
   const [backfillTo, setBackfillTo] = useState('')
   const [backfillBusy, setBackfillBusy] = useState(false)
 
-  const applyConnections = (connections: ConnectionRecord[]) => {
-    setRows(connections)
-    const drafts = squareDrafts(connections)
+  useEffect(() => {
+    if (!rows) return
+    const drafts = squareDrafts(rows)
     setChannels(drafts.channels)
     setChannelsApproved(drafts.channelsApproved)
     setItemAliasesText(drafts.itemAliasesText)
     setItemAliasesApproved(drafts.itemAliasesApproved)
-  }
-
-  const load = async () => {
-    const r = await integrationsApi.list()
-    applyConnections(r.data.connections)
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    integrationsApi.list()
-      .then((r) => {
-        if (cancelled) return
-        applyConnections(r.data.connections)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Unable to load connections')
-      })
-    return () => { cancelled = true }
-  }, [])
+  }, [rows])
 
   const oauthError = searchParams.get('error')
-  const displayError = error || oauthError
+  const displayError = actionError || oauthError
 
-  const by = useMemo(() => Object.fromEntries(rows.map((x) => [x.provider, x])) as Record<string, ConnectionRecord>, [rows])
+  const by = useMemo(() => Object.fromEntries((rows || []).map((x) => [x.provider, x])) as Record<string, ConnectionRecord>, [rows])
 
-  const connect = async () => {
+  const connect = async (provider: 'square' | 'google') => {
     try {
-      setError('')
-      const r = await integrationsApi.connect('square')
+      setActionError('')
+      const r = await integrationsApi.connect(provider)
       window.location.assign(r.data.url)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to start OAuth')
+      setActionError(asyncMessage(e, 'Unable to start OAuth'))
     }
   }
-  const discover = async () => {
+  const discover = async (provider: 'square' | 'google') => {
     try {
-      setError('')
-      await integrationsApi.discover('square')
-      await load()
+      setActionError('')
+      await integrationsApi.discover(provider)
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Discovery failed')
+      setActionError(asyncMessage(e, 'Discovery failed'))
+    }
+  }
+  const saveGoogle = async (locationId: string, patch: Record<string, string>) => {
+    try {
+      const current = (by.google?.mappings || {}) as Record<string, unknown>
+      const locs = { ...((current.locations || {}) as Record<string, Record<string, string>>) }
+      locs[locationId] = { ...(locs[locationId] || {}), ...patch }
+      await integrationsApi.setMappings('google', { ...current, locations: locs })
+      reload()
+    } catch (e) {
+      setActionError(asyncMessage(e, 'Google mapping failed'))
     }
   }
   const saveSquare = async (locationId: string, squareLocationId: string) => {
@@ -110,9 +109,9 @@ export function AdministrationIntegration() {
       const current = (by.square?.mappings || {}) as Record<string, unknown>
       const locs = { ...((current.locations || {}) as Record<string, unknown>), [locationId]: { squareLocationId } }
       await integrationsApi.setMappings('square', { ...current, locations: locs })
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Square mapping failed')
+      setActionError(asyncMessage(e, 'Square mapping failed'))
     }
   }
   const saveChannels = async () => {
@@ -123,9 +122,9 @@ export function AdministrationIntegration() {
       setNotice(channelsApproved
         ? 'Square channel mapping saved and explicitly approved. Direct-order metrics may now publish after validation.'
         : 'Square channel mapping saved as unapproved. Direct-order metrics remain unavailable.')
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Channel mapping failed')
+      setActionError(asyncMessage(e, 'Channel mapping failed'))
     }
   }
   const saveItemAliases = async () => {
@@ -145,22 +144,22 @@ export function AdministrationIntegration() {
       setNotice(itemAliasesApproved
         ? 'Cross-POS item aliases saved and approved for future Square/Toast normalization.'
         : 'Cross-POS item aliases saved as unapproved; provider item names remain unchanged.')
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Item alias mapping failed')
+      setActionError(asyncMessage(e, 'Item alias mapping failed'))
     }
   }
   const runBackfill = async () => {
     if (!backfillLoc || !backfillFrom || !backfillTo) return
     setBackfillBusy(true)
-    setError('')
+    setActionError('')
     setNotice('Running bounded Square historical backfill…')
     try {
       const r = await integrationsApi.squareBackfill(backfillLoc, backfillFrom, backfillTo)
       setNotice(`Square backfill finished: ${r.data.complete} complete, ${r.data.partial} partial, ${r.data.failed} failed across ${r.data.days} day(s). Re-running the same range safely resumes incomplete days.`)
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Square backfill failed')
+      setActionError(asyncMessage(e, 'Square backfill failed'))
     } finally {
       setBackfillBusy(false)
     }
@@ -177,22 +176,41 @@ export function AdministrationIntegration() {
         mapping: { orderId: 'orderId', businessDate: 'businessDate', netSales: 'netSales', grossSales: 'grossSales', discounts: 'discounts', refunds: 'refunds', channel: 'channel' },
       })
       setNotice(`Toast history imported: ${String(r.data.imported || 0)} rows. Original archive retained privately.`)
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Toast import failed')
+      setActionError(asyncMessage(e, 'Toast import failed'))
     }
   }
 
   const square = by.square
+  const google = by.google
   const sqMeta = (square?.metadata || {}) as Record<string, unknown>
+  const gMeta = (google?.metadata || {}) as Record<string, unknown>
   const sqLocations = Array.isArray(sqMeta.providerLocations) ? sqMeta.providerLocations as Array<Record<string, unknown>> : []
+  const ga4Properties = Array.isArray(gMeta.ga4Properties) ? gMeta.ga4Properties as Array<Record<string, unknown>> : []
+  const gscSites = Array.isArray(gMeta.gscSites) ? gMeta.gscSites as Array<Record<string, unknown>> : []
+  const gbpLocations = Array.isArray(gMeta.gbpLocations) ? gMeta.gbpLocations as Array<Record<string, unknown>> : []
+  const googleSyncNow = async () => {
+    const loc = locations.find((l) => l.status === 'active')
+    if (!loc) return
+    try {
+      setActionError('')
+      await integrationsApi.googleSync(loc.id, '7d')
+      setNotice('Google 7-day sync finished. Unmapped sources remain Unavailable.')
+      reload()
+    } catch (e) {
+      setActionError(asyncMessage(e, 'Google sync failed'))
+    }
+  }
 
   return (
-    <AppShell title="Integrations" subtitle="Square live POS, Toast historical-only import, and canonical mappings" activeNav="admin">
+    <AppShell title="Integrations" subtitle="Square live POS, Google (GA4 / Search Console / Business Profile), Toast historical-only import, and canonical mappings" activeNav="admin">
       <AdminTabs value="integrations" />
-      <div className="mt-5 space-y-5">
-        {displayError && <Card accentBorder="brand"><p className="text-danger-subtle-text">{displayError}</p></Card>}
-        {notice && <Card accentBorder="accent"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
+      {displayError && <QueryError message={displayError} className="mt-5" />}
+      {notice && <Card accentBorder="accent" className="mt-4"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
+      <QueryState data={rows} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<DualPanelSkeleton />}>
+        {() => (
+      <div className="space-y-5">
         <Card
           title="Square · live V1 POS"
           action={<Pill tone={square?.status === 'READY' ? 'success' : square?.status === 'PARTIAL' ? 'warning' : square?.status === 'ERROR' ? 'danger' : 'neutral'} variant="outline">{square?.status || 'UNAVAILABLE'}</Pill>}
@@ -200,10 +218,27 @@ export function AdministrationIntegration() {
           <p className="text-sm text-card-text-muted">Live order/sales provider. OAuth, explicit restaurant mapping and approved channel mapping are required.</p>
           {square?.lastError && <p className="mt-2 text-xs text-danger-subtle-text">{square.lastError}</p>}
           <div className="mt-4 flex gap-2">
-            {!square ? <Button size="sm" onClick={() => void connect()}>Connect with OAuth</Button> : (
+            {!square ? <Button size="sm" onClick={() => void connect('square')}>Connect with OAuth</Button> : (
               <>
-                <Button size="sm" variant="outline" onClick={() => void discover()}>Refresh resources</Button>
-                <Button size="sm" variant="outline" onClick={() => void connect()}>Reconnect</Button>
+                <Button size="sm" variant="outline" onClick={() => void discover('square')}>Refresh resources</Button>
+                <Button size="sm" variant="outline" onClick={() => void connect('square')}>Reconnect</Button>
+              </>
+            )}
+          </div>
+        </Card>
+
+        <Card
+          title="Google · GA4 / Search Console / Business Profile"
+          action={<Pill tone={google?.status === 'READY' ? 'success' : google?.status === 'PARTIAL' ? 'warning' : google?.status === 'ERROR' ? 'danger' : 'neutral'} variant="outline">{google?.status || 'UNAVAILABLE'}</Pill>}
+        >
+          <p className="text-sm text-card-text-muted">One OAuth connect covers GA4, Search Console, and Google Business Profile. Missing capabilities stay Partial/Unavailable rather than zero.</p>
+          {google?.lastError && <p className="mt-2 text-xs text-danger-subtle-text">{google.lastError}</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {!google ? <Button size="sm" onClick={() => void connect('google')}>Connect with OAuth</Button> : (
+              <>
+                <Button size="sm" variant="outline" onClick={() => void discover('google')}>Refresh resources</Button>
+                <Button size="sm" variant="outline" onClick={() => void connect('google')}>Reconnect</Button>
+                <Button size="sm" variant="outline" onClick={() => void googleSyncNow()}>Sync last 7 days</Button>
               </>
             )}
           </div>
@@ -213,12 +248,30 @@ export function AdministrationIntegration() {
           <div className="space-y-5">
             {locations.filter((l) => l.status === 'active').map((l) => {
               const sm = (((by.square?.mappings || {}) as Record<string, unknown>).locations || {}) as Record<string, Record<string, string>>
+              const gm = (((by.google?.mappings || {}) as Record<string, unknown>).locations || {}) as Record<string, Record<string, string>>
               return (
                 <div key={l.id} className="rounded-lg border border-card-border p-4">
                   <h3 className="font-semibold text-card-text">{l.name}</h3>
-                  <div className="mt-3 max-w-md">
-                    <p className="mb-1 text-xs text-card-text-muted">Square restaurant</p>
-                    <Select value={sm[l.id]?.squareLocationId || ''} onChange={(v) => void saveSquare(l.id, v)} placeholder="Map Square location" options={sqLocations.map((x) => ({ value: String(x.id), label: String(x.name || x.id) }))} />
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-xs text-card-text-muted">Square restaurant</p>
+                      <Select value={sm[l.id]?.squareLocationId || ''} onChange={(v) => void saveSquare(l.id, v)} placeholder="Map Square location" options={sqLocations.map((x) => ({ value: String(x.id), label: String(x.name || x.id) }))} />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-card-text-muted">GA4 property</p>
+                      <Select value={gm[l.id]?.ga4PropertyId || ''} onChange={(v) => void saveGoogle(l.id, { ga4PropertyId: v })} placeholder="Map GA4 property" options={ga4Properties.map((x) => ({ value: String(x.id), label: String(x.displayName || x.id) }))} />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-card-text-muted">Search Console site</p>
+                      <Select value={gm[l.id]?.gscSiteUrl || ''} onChange={(v) => void saveGoogle(l.id, { gscSiteUrl: v })} placeholder="Map Search Console site" options={gscSites.map((x) => ({ value: String(x.siteUrl), label: String(x.siteUrl) }))} />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs text-card-text-muted">Google Business Profile</p>
+                      <Select value={gm[l.id]?.gbpLocationName || ''} onChange={(v) => {
+                        const loc = gbpLocations.find((x) => String(x.name) === v)
+                        void saveGoogle(l.id, { gbpLocationName: v, gbpAccountName: String(loc?.accountName || '') })
+                      }} placeholder="Map GBP listing" options={gbpLocations.map((x) => ({ value: String(x.name), label: String(x.title || x.name) }))} />
+                    </div>
                   </div>
                 </div>
               )
@@ -289,6 +342,8 @@ export function AdministrationIntegration() {
           <p className="mt-2 text-xs text-card-text-faint">Required headers: orderId, businessDate, netSales. Optional: grossSales, discounts, refunds, channel, itemId, itemName, itemCategory, itemQuantity, itemNetSales. Money is in dollars. Repeat orderId for line items. The original file is retained unchanged before parsing.</p>
         </Card>
       </div>
+        )}
+      </QueryState>
     </AppShell>
   )
 }

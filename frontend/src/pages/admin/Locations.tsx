@@ -1,28 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AppShell } from '../../components/layout/AppShell'
 import { AdminTabs } from '../../components/layout/SectionTabs'
+import { QueryError, QueryState, TableSkeleton } from '../../components/query'
 import { Button, Card, Input, Modal, Pill, Select } from '../../components/ui'
 import { locationsApi, type Location } from '../../lib/api'
+import { asyncMessage } from '../../lib/asyncError'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { useAppState } from '../../context/useAppState'
 
 export function Locations() {
   const { refreshLocations } = useAppState()
-  const [rows, setRows] = useState<Location[]>([])
+  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    async () => {
+      const response = await locationsApi.list()
+      await refreshLocations()
+      return response.data.locations
+    },
+    [],
+    { fallbackError: 'Unable to load locations' },
+  )
   const [editing, setEditing] = useState<Location | null>(null)
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState('')
-  const load = async () => { const response = await locationsApi.list(); setRows(response.data.locations); await refreshLocations() }
-  useEffect(() => { void load().catch((err) => setError(err instanceof Error ? err.message : 'Unable to load locations')) }, [])
-  const toggle = async (row: Location) => { try { await locationsApi.update(row.id, { status: row.status === 'active' ? 'inactive' : 'active' }); await load(); setError('') } catch (err) { setError(err instanceof Error ? err.message : 'Update failed') } }
+  const [actionError, setActionError] = useState('')
+  const toggle = async (row: Location) => {
+    try {
+      await locationsApi.update(row.id, { status: row.status === 'active' ? 'inactive' : 'active' })
+      setActionError('')
+      reload()
+    } catch (err) {
+      setActionError(asyncMessage(err, 'Update failed'))
+    }
+  }
   return <AppShell title="Locations" subtitle="Configuration-driven restaurants, timezones and lifecycle state" activeNav="admin">
     <AdminTabs value="locations" />
     <div className="mt-5 space-y-4">
-      {error && <Card accentBorder="brand"><p className="text-danger-subtle-text">{error}</p></Card>}
+      {actionError && <QueryError message={actionError} />}
       <div><Button size="sm" onClick={() => setCreating(true)}>Add location</Button></div>
+      <QueryState data={data} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<TableSkeleton />} className="mt-0">
+        {(rows) => (
       <Card><div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b border-card-border text-left text-xs uppercase text-card-text-faint"><th className="py-2">Location</th><th>Address</th><th>Timezone</th><th>Business-day cutoff</th><th>Status</th><th></th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-b border-card-border last:border-0"><td className="py-3 font-medium text-card-text">{row.name}</td><td className="text-card-text-muted">{row.address || '—'}</td><td className="text-card-text-muted">{row.timezone}</td><td className="text-card-text-muted">4:00 AM local</td><td><Pill tone={row.status === 'active' ? 'success' : 'neutral'} variant="outline">{row.status}</Pill></td><td className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(row)}>Edit</Button><Button size="sm" variant="outline" onClick={() => void toggle(row)}>{row.status === 'active' ? 'Deactivate' : 'Activate'}</Button></div></td></tr>)}</tbody></table></div></Card>
+        )}
+      </QueryState>
     </div>
-    {creating && <LocationModal onClose={() => setCreating(false)} onDone={async () => { setCreating(false); await load() }} />}
-    {editing && <LocationModal location={editing} onClose={() => setEditing(null)} onDone={async () => { setEditing(null); await load() }} />}
+    {creating && <LocationModal onClose={() => setCreating(false)} onDone={async () => { setCreating(false); reload() }} />}
+    {editing && <LocationModal location={editing} onClose={() => setEditing(null)} onDone={async () => { setEditing(null); reload() }} />}
   </AppShell>
 }
 
@@ -39,7 +60,7 @@ function LocationModal({ location, onClose, onDone }: { location?: Location; onC
       if (location) await locationsApi.update(location.id, { name, address, timezone, status })
       else await locationsApi.create({ name, address, timezone, status })
       await onDone()
-    } catch (err) { setError(err instanceof Error ? err.message : 'Save failed') } finally { setBusy(false) }
+    } catch (err) { setError(asyncMessage(err, 'Save failed')) } finally { setBusy(false) }
   }
   return <Modal open title={location ? 'Edit location' : 'Add location'} onClose={onClose} footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={() => void save()}>{location ? 'Save changes' : 'Create'}</Button></>}>
     <div className="space-y-4">

@@ -1,17 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AppShell } from '../../components/layout/AppShell'
 import { AdminTabs } from '../../components/layout/SectionTabs'
+import { QueryError, QueryState, DualPanelSkeleton } from '../../components/query'
 import { Button, Card, Input, Pill, Select } from '../../components/ui'
 import { settingsApi, systemApi } from '../../lib/api'
+import { asyncMessage } from '../../lib/asyncError'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { dateTime } from '../../lib/format'
 import { useAppState } from '../../context/useAppState'
 
 export function AdministrationSystemAndThresholds() {
   const { locations } = useAppState()
   const [scope, setScope] = useState('org')
-  const [settings, setSettings] = useState<{ defaults: Record<string, unknown>; history: Array<Record<string, unknown>> } | null>(null)
-  const [health, setHealth] = useState<Awaited<ReturnType<typeof systemApi.health>>['data'] | null>(null)
-  const [error, setError] = useState('')
+  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    async () => {
+      const [s, h] = await Promise.all([settingsApi.list(), systemApi.health()])
+      return { settings: s.data, health: h.data }
+    },
+    [],
+    { fallbackError: 'Unable to load system configuration' },
+  )
+  const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
   const [edits, setEdits] = useState<{
     scope: string
@@ -20,26 +29,8 @@ export function AdministrationSystemAndThresholds() {
   } | null>(null)
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10))
 
-  const load = async () => {
-    const [s, h] = await Promise.all([settingsApi.list(), systemApi.health()])
-    setSettings(s.data)
-    setHealth(h.data)
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([settingsApi.list(), systemApi.health()])
-      .then(([s, h]) => {
-        if (cancelled) return
-        setSettings(s.data)
-        setHealth(h.data)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Unable to load system configuration')
-      })
-    return () => { cancelled = true }
-  }, [])
+  const settings = data?.settings ?? null
+  const health = data?.health ?? null
 
   const latest = (key: string) => {
     if (!settings) return undefined
@@ -60,11 +51,11 @@ export function AdministrationSystemAndThresholds() {
   const draftWeights = edits?.scope === scope ? edits.weights : derivedWeights
 
   const save = async () => {
-    setError('')
+    setActionError('')
     const w = Object.fromEntries(Object.entries(draftWeights).map(([k, v]) => [k, Number(v) / 100]))
     const total = Object.values(w).reduce((a, b) => a + b, 0)
     if (Math.abs(total - 1) > 0.001) {
-      setError('Score weights must total 100%.')
+      setActionError('Score weights must total 100%.')
       return
     }
     try {
@@ -75,9 +66,9 @@ export function AdministrationSystemAndThresholds() {
       ])
       setNotice('New effective-dated settings saved. Historical snapshots are unchanged.')
       setEdits(null)
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed')
+      setActionError(asyncMessage(e, 'Save failed'))
     }
   }
 
@@ -89,9 +80,9 @@ export function AdministrationSystemAndThresholds() {
     try {
       await systemApi.rerun({ source, locationId: String(row.locationId), businessDate: String(row.businessDate) })
       setNotice(`${source === 'calculate' ? 'Recalculation' : `${source} acquisition`} completed.`)
-      await load()
+      reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Rerun failed')
+      setActionError(asyncMessage(e, 'Rerun failed'))
     }
   }
 
@@ -103,9 +94,11 @@ export function AdministrationSystemAndThresholds() {
       actions={<Button size="sm" variant="outline" onClick={() => window.location.assign(systemApi.exportUrl)}>Export client data</Button>}
     >
       <AdminTabs value="system" />
-      <div className="mt-5 space-y-5">
-        {error && <Card accentBorder="brand"><p className="text-danger-subtle-text">{error}</p></Card>}
-        {notice && <Card accentBorder="accent"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
+      {actionError && <QueryError message={actionError} className="mt-4" />}
+      {notice && <Card accentBorder="accent" className="mt-4"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
+      <QueryState data={data} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<DualPanelSkeleton />}>
+        {() => (
+      <div className="space-y-5">
         <Card title="Effective-dated business controls">
           <div className="mb-4 max-w-xs">
             <p className="mb-1 text-xs text-card-text-muted">Configuration scope</p>
@@ -176,6 +169,7 @@ export function AdministrationSystemAndThresholds() {
                   <div className="flex items-center gap-2">
                     <Pill tone={j.status === 'COMPLETE' ? 'success' : j.status === 'FAILED' ? 'danger' : 'warning'} variant="outline" size="sm">{String(j.status)}</Pill>
                     {String(j.source) === 'square' && j.locationId && j.businessDate ? <Button size="sm" variant="outline" onClick={() => void rerun(j, String(j.source))}>Retry</Button> : null}
+                    {String(j.source) === 'google' && j.locationId && j.businessDate ? <Button size="sm" variant="outline" onClick={() => void rerun(j, 'google')}>Retry</Button> : null}
                   </div>
                 </div>
               ))}
@@ -196,6 +190,8 @@ export function AdministrationSystemAndThresholds() {
           </div>
         </Card>
       </div>
+        )}
+      </QueryState>
     </AppShell>
   )
 }

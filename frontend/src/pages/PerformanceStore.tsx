@@ -4,6 +4,7 @@ import { PerformanceTabs } from '../components/layout/SectionTabs'
 import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
 import { RankingRow } from '../components/command-center/RankingRow'
 import { TrendBadge } from '../components/command-center/TrendBadge'
+import { QueryState, PerformanceSkeleton } from '../components/query'
 import {
   BarChart,
   Card,
@@ -12,7 +13,8 @@ import {
   Tabs,
 } from '../components/ui'
 import { chartColors } from '../components/ui/charts/chartTheme'
-import { analyticsApi, type PerformanceData } from '../lib/api'
+import { analyticsApi } from '../lib/api'
+import { useAsyncResource } from '../hooks/useAsyncResource'
 import { freshnessTime, money } from '../lib/format'
 import { comparisonWeekdayLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
@@ -43,17 +45,13 @@ function locName(id: { _id: string; name: string } | string | undefined): string
 
 export function PerformanceStore() {
   const { query, locations, selectedLocationId, comparisonMode } = useAppState()
-  const [data, setData] = useState<PerformanceData | null>(null)
-  const [error, setError] = useState('')
+  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    () => analyticsApi.performance(query).then((response) => response.data),
+    [query],
+    { fallbackError: 'Unable to load performance' },
+  )
   const [view, setView] = useState<StoreView>('normal')
   const [itemView, setItemView] = useState<ItemView>('top')
-
-  useEffect(() => {
-    setError('')
-    analyticsApi.performance(query)
-      .then((response) => setData(response.data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Unable to load performance'))
-  }, [query])
 
   const selectedLocation = locations.find((location) => location.id === selectedLocationId)
   const storeName = selectedLocationId === 'all' ? 'All locations' : selectedLocation?.name || 'Location'
@@ -114,13 +112,16 @@ export function PerformanceStore() {
       activeNav="performance"
     >
       <PerformanceTabs value="stores" />
-      {error && (
-        <Card className="mt-5" accentBorder="brand">
-          <p className="text-danger-subtle-text">{error}</p>
-        </Card>
-      )}
-      {data && (
-        <div className="mt-5 space-y-5">
+      <QueryState
+        data={data}
+        error={error}
+        isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        onRetry={reload}
+        loader={<PerformanceSkeleton />}
+      >
+        {(data) => (
+        <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               {score && (
@@ -309,7 +310,8 @@ export function PerformanceStore() {
             </p>
           </Card>
         </div>
-      )}
+        )}
+      </QueryState>
     </AppShell>
   )
 }
