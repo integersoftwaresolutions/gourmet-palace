@@ -5,7 +5,7 @@ One GitHub import deploys the **Vite SPA** and the **Express API** on the same o
 ## Import steps
 
 1. Open [vercel.com/new](https://vercel.com/new) and import this repository.
-2. Leave **Root Directory** empty (repo root). Vercel reads `vercel.json`.
+2. Leave **Root Directory** empty (repo root). Vercel reads `vercel.json` and deploys two **services** (Vite `frontend` + Express `backend`) with `/api/*` routed to the API.
 3. Add the environment variables below (Production + Preview as needed).
 4. Deploy.
 5. After the first production URL is known, set `APP_URL` / `CORS_ORIGIN` to that URL (and custom domain if you add one), then redeploy.
