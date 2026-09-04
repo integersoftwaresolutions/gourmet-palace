@@ -33,7 +33,7 @@
   "crons": [
     {
       "path": "/api/v1/system/worker/tick",
-      "schedule": "0 8 * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }

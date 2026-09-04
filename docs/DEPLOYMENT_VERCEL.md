@@ -85,11 +85,45 @@ Optional if keys differ for S3: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_
 
 ## Worker / Cron
 
-`vercel.json` registers Cron → `GET /api/v1/system/worker/tick` (daily `0 8 * * *` for Hobby-plan compatibility).
+`vercel.json` registers Cron → `GET /api/v1/system/worker/tick` at **`0 0 * * *`** (00:00 UTC = **05:00 Pakistan / PKT**, once per day).
 
-- Set `CRON_SECRET` in Vercel.
-- On **Pro**, you can change the schedule in `vercel.json` to `*/5 * * * *` to match the local worker cadence.
-- Or call the same URL from an external scheduler with header `Authorization: Bearer <CRON_SECRET>`.
+The tick endpoint runs the full Square sync + morning brief cycle (it does not apply the local Pacific time window; the Cron schedule is the clock).
+
+### `CRON_SECRET` setup
+
+1. Generate a secret (any long random string), e.g. in PowerShell:
+
+```powershell
+[Convert]::ToHexString((1..32 | ForEach-Object { Get-Random -Maximum 256 }) -as [byte[]]).ToLower()
+```
+
+or:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+2. In Vercel → Project → **Settings → Environment Variables**:
+   - Name: `CRON_SECRET` (exact name)
+   - Value: the generated string
+   - Environments: Production (and Preview if you want)
+3. **Redeploy** after adding it (env changes apply on the next deployment).
+
+Vercel will automatically send `Authorization: Bearer <CRON_SECRET>` on Cron invocations when that variable exists. Our API checks the same header.
+
+Manual test:
+
+```bash
+curl -i -H "Authorization: Bearer YOUR_CRON_SECRET" "https://YOUR_DOMAIN/api/v1/system/worker/tick"
+```
+
+You should see HTTP 200 and `{ "success": true, ... }`.
+
+Notes:
+
+- Brief **business date** is still the prior **Pacific** restaurant day (canonical for location data).
+- Function `maxDuration` is 60s — fine for a small location set; large Square syncs may need a longer plan limit or a dedicated worker host.
+- Hobby allows **one** daily Cron; this schedule fits that.
 
 ## Smoke checks after deploy
 

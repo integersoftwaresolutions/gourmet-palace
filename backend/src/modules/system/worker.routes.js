@@ -20,7 +20,8 @@ function assertWorkerAuthorized(req) {
 
 async function tick(req, res) {
   assertWorkerAuthorized(req);
-  await runCycle();
+  // Cron / manual ops triggers always run the full cycle; schedule owns the clock.
+  await runCycle({ ignoreTimeWindow: true });
   ApiResponse.send(res, { message: 'Worker cycle completed', data: { ok: true, at: new Date().toISOString() } });
 }
 

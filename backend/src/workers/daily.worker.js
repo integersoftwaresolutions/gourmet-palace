@@ -22,13 +22,15 @@ function priorBusinessDate(timeZone, cutoffHour = 4) {
 
 function pacificParts() { return zonedParts('America/Los_Angeles'); }
 
-async function runCycle() {
+async function runCycle(options = {}) {
+  const ignoreTimeWindow = Boolean(options.ignoreTimeWindow);
   const pt = pacificParts();
   const pacificDate = `${pt.year}-${pt.month}-${pt.day}`;
   const briefBusinessDate = addDays(pacificDate, -1);
   const hour = Number(pt.hour), minute = Number(pt.minute);
-  // Staging can tune this later; the V1 target remains a 5:00 AM Pacific publish.
-  if (hour < 3 || hour > 7 || (hour === 3 && minute < 30)) return;
+  // Local 5-minute worker uses this Pacific window. Vercel Cron calls with ignoreTimeWindow
+  // so the schedule (e.g. 5 AM Pakistan) controls when work actually runs.
+  if (!ignoreTimeWindow && (hour < 3 || hour > 7 || (hour === 3 && minute < 30))) return;
 
   const orgs = await Organization.find({}).select('_id');
   for (const org of orgs) {
@@ -44,7 +46,7 @@ async function runCycle() {
       }
     }
 
-    if (hour > 5 || (hour === 5 && minute >= 0)) {
+    if (ignoreTimeWindow || hour > 5 || (hour === 5 && minute >= 0)) {
       try { await briefs.generateDailyForOrganization(org._id, briefBusinessDate); }
       catch (e) { console.error('[worker:brief]', e.message); }
     }
