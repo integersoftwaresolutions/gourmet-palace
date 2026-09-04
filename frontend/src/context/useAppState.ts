@@ -1,0 +1,1 @@
+import { useContext } from 'react';import { AppStateContext } from './app-state-context';export function useAppState(){const v=useContext(AppStateContext);if(!v)throw new Error('useAppState must be used inside AppStateProvider');return v}

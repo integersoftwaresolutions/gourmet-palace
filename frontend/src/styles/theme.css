@@ -1,0 +1,317 @@
+/* ==========================================================================
+   Gourmet Palace — Command Center theme
+   --------------------------------------------------------------------------
+   Each theme class (.dark, later .light, .holiday, …) hardcodes every semantic
+   color. Put that class on <html> and the whole app follows, because @theme
+   below wires Tailwind utilities to these CSS variables:
+
+     bg-canvas              →  var(--canvas)
+     text-canvas-text       →  var(--canvas-text)
+     border-brand-border    →  var(--brand-border)
+     …
+
+   Every role carries the same 12 slots:
+     {role}                base fill
+     {role}-hover          base fill, hovered
+     {role}-active         base fill, pressed
+     {role}-subtle         de-emphasized fill
+     {role}-subtle-hover   subtle fill, hovered
+     {role}-subtle-text    text on the subtle fill
+     {role}-text           primary text on the base fill
+     {role}-text-muted     secondary text on the base fill
+     {role}-text-faint     tertiary text on the base fill
+     {role}-border         default border
+     {role}-border-strong  emphasized border
+     {role}-ring           focus ring
+   ========================================================================== */
+
+/* Screenshot theme — Command Center dark */
+.dark {
+  /* ---- canvas — sidebar, login page ---- */
+  --canvas: #14100f;
+  --canvas-hover: #1c1615;
+  --canvas-active: #221c1b;
+  --canvas-subtle: #0e0b0a;
+  --canvas-subtle-hover: #14100f;
+  --canvas-subtle-text: #a79e9a;
+  --canvas-text: #f5f1ef;
+  --canvas-text-muted: #a79e9a;
+  --canvas-text-faint: #7a716d;
+  --canvas-border: #221c1b;
+  --canvas-border-strong: #372f2e;
+  --canvas-ring: color-mix(in oklab, #e9a73c 55%, transparent);
+
+  /* ---- surface — main content region ---- */
+  --surface: #1a1514;
+  --surface-hover: #221c1b;
+  --surface-active: #282120;
+  --surface-subtle: #14100f;
+  --surface-subtle-hover: #1a1514;
+  --surface-subtle-text: #a79e9a;
+  --surface-text: #f5f1ef;
+  --surface-text-muted: #a79e9a;
+  --surface-text-faint: #7a716d;
+  --surface-border: #2a2322;
+  --surface-border-strong: #3f3736;
+  --surface-ring: color-mix(in oklab, #e9a73c 55%, transparent);
+
+  /* ---- card — KPI cards, panels, login card ---- */
+  --card: #262120;
+  --card-hover: #2d2726;
+  --card-active: #332c2b;
+  --card-subtle: #201b1a;
+  --card-subtle-hover: #262120;
+  --card-subtle-text: #a79e9a;
+  --card-text: #f5f1ef;
+  --card-text-muted: #a79e9a;
+  --card-text-faint: #7a716d;
+  --card-border: #372f2e;
+  --card-border-strong: #4a4241;
+  --card-ring: color-mix(in oklab, #e9a73c 55%, transparent);
+
+  /* ---- brand — sign in, active nav, logo tile ---- */
+  --brand: #b8121a;
+  --brand-hover: #d2222a;
+  --brand-active: #9c0e15;
+  --brand-subtle: color-mix(in oklab, #b8121a 12%, transparent);
+  --brand-subtle-hover: color-mix(in oklab, #b8121a 20%, transparent);
+  --brand-subtle-text: #f07a7e;
+  --brand-text: #ffffff;
+  --brand-text-muted: color-mix(in oklab, #ffffff 75%, transparent);
+  --brand-text-faint: color-mix(in oklab, #ffffff 55%, transparent);
+  --brand-border: color-mix(in oklab, #b8121a 45%, transparent);
+  --brand-border-strong: color-mix(in oklab, #b8121a 70%, transparent);
+  --brand-ring: color-mix(in oklab, #b8121a 60%, transparent);
+
+  /* ---- accent — Ask AI, health ring, script headings ---- */
+  --accent: #e9a73c;
+  --accent-hover: #f3bc5c;
+  --accent-active: #d0902a;
+  --accent-subtle: color-mix(in oklab, #e9a73c 12%, transparent);
+  --accent-subtle-hover: color-mix(in oklab, #e9a73c 20%, transparent);
+  --accent-subtle-text: #efb558;
+  --accent-text: #14100f;
+  --accent-text-muted: color-mix(in oklab, #14100f 70%, transparent);
+  --accent-text-faint: color-mix(in oklab, #14100f 50%, transparent);
+  --accent-border: color-mix(in oklab, #e9a73c 45%, transparent);
+  --accent-border-strong: color-mix(in oklab, #e9a73c 70%, transparent);
+  --accent-ring: color-mix(in oklab, #e9a73c 60%, transparent);
+
+  /* ---- success ---- */
+  --success: #2e9e5b;
+  --success-hover: #3ab86c;
+  --success-active: #26834b;
+  --success-subtle: color-mix(in oklab, #2e9e5b 12%, transparent);
+  --success-subtle-hover: color-mix(in oklab, #2e9e5b 20%, transparent);
+  --success-subtle-text: #57c784;
+  --success-text: #ffffff;
+  --success-text-muted: color-mix(in oklab, #ffffff 75%, transparent);
+  --success-text-faint: color-mix(in oklab, #ffffff 55%, transparent);
+  --success-border: color-mix(in oklab, #2e9e5b 45%, transparent);
+  --success-border-strong: color-mix(in oklab, #2e9e5b 70%, transparent);
+  --success-ring: color-mix(in oklab, #2e9e5b 60%, transparent);
+
+  /* ---- warning ---- */
+  --warning: #e0921f;
+  --warning-hover: #f0a63a;
+  --warning-active: #c47d14;
+  --warning-subtle: color-mix(in oklab, #e0921f 12%, transparent);
+  --warning-subtle-hover: color-mix(in oklab, #e0921f 20%, transparent);
+  --warning-subtle-text: #edb055;
+  --warning-text: #14100f;
+  --warning-text-muted: color-mix(in oklab, #14100f 70%, transparent);
+  --warning-text-faint: color-mix(in oklab, #14100f 50%, transparent);
+  --warning-border: color-mix(in oklab, #e0921f 45%, transparent);
+  --warning-border-strong: color-mix(in oklab, #e0921f 70%, transparent);
+  --warning-ring: color-mix(in oklab, #e0921f 60%, transparent);
+
+  /* ---- danger ---- */
+  --danger: #c9282e;
+  --danger-hover: #de3b41;
+  --danger-active: #ab1f24;
+  --danger-subtle: color-mix(in oklab, #c9282e 12%, transparent);
+  --danger-subtle-hover: color-mix(in oklab, #c9282e 20%, transparent);
+  --danger-subtle-text: #ef6a6e;
+  --danger-text: #ffffff;
+  --danger-text-muted: color-mix(in oklab, #ffffff 75%, transparent);
+  --danger-text-faint: color-mix(in oklab, #ffffff 55%, transparent);
+  --danger-border: color-mix(in oklab, #c9282e 45%, transparent);
+  --danger-border-strong: color-mix(in oklab, #c9282e 70%, transparent);
+  --danger-ring: color-mix(in oklab, #c9282e 60%, transparent);
+
+  /* ---- info ---- */
+  --info: #4c7fd1;
+  --info-hover: #6294df;
+  --info-active: #3d6ab4;
+  --info-subtle: color-mix(in oklab, #4c7fd1 12%, transparent);
+  --info-subtle-hover: color-mix(in oklab, #4c7fd1 20%, transparent);
+  --info-subtle-text: #82a9ea;
+  --info-text: #ffffff;
+  --info-text-muted: color-mix(in oklab, #ffffff 75%, transparent);
+  --info-text-faint: color-mix(in oklab, #ffffff 55%, transparent);
+  --info-border: color-mix(in oklab, #4c7fd1 45%, transparent);
+  --info-border-strong: color-mix(in oklab, #4c7fd1 70%, transparent);
+  --info-ring: color-mix(in oklab, #4c7fd1 60%, transparent);
+
+  /* ---- neutral — secondary buttons, quiet pills ---- */
+  --neutral: #4a4241;
+  --neutral-hover: #5a5150;
+  --neutral-active: #3f3736;
+  --neutral-subtle: color-mix(in oklab, #4a4241 25%, transparent);
+  --neutral-subtle-hover: color-mix(in oklab, #4a4241 35%, transparent);
+  --neutral-subtle-text: #a79e9a;
+  --neutral-text: #f5f1ef;
+  --neutral-text-muted: color-mix(in oklab, #f5f1ef 75%, transparent);
+  --neutral-text-faint: color-mix(in oklab, #f5f1ef 55%, transparent);
+  --neutral-border: color-mix(in oklab, #4a4241 60%, transparent);
+  --neutral-border-strong: color-mix(in oklab, #4a4241 85%, transparent);
+  --neutral-ring: color-mix(in oklab, #4a4241 60%, transparent);
+}
+
+/* Tailwind bindings — shared across every theme class.
+   `inline` keeps the var() live, so swapping .dark → .light updates utilities. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-canvas-hover: var(--canvas-hover);
+  --color-canvas-active: var(--canvas-active);
+  --color-canvas-subtle: var(--canvas-subtle);
+  --color-canvas-subtle-hover: var(--canvas-subtle-hover);
+  --color-canvas-subtle-text: var(--canvas-subtle-text);
+  --color-canvas-text: var(--canvas-text);
+  --color-canvas-text-muted: var(--canvas-text-muted);
+  --color-canvas-text-faint: var(--canvas-text-faint);
+  --color-canvas-border: var(--canvas-border);
+  --color-canvas-border-strong: var(--canvas-border-strong);
+  --color-canvas-ring: var(--canvas-ring);
+
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-subtle-hover: var(--surface-subtle-hover);
+  --color-surface-subtle-text: var(--surface-subtle-text);
+  --color-surface-text: var(--surface-text);
+  --color-surface-text-muted: var(--surface-text-muted);
+  --color-surface-text-faint: var(--surface-text-faint);
+  --color-surface-border: var(--surface-border);
+  --color-surface-border-strong: var(--surface-border-strong);
+  --color-surface-ring: var(--surface-ring);
+
+  --color-card: var(--card);
+  --color-card-hover: var(--card-hover);
+  --color-card-active: var(--card-active);
+  --color-card-subtle: var(--card-subtle);
+  --color-card-subtle-hover: var(--card-subtle-hover);
+  --color-card-subtle-text: var(--card-subtle-text);
+  --color-card-text: var(--card-text);
+  --color-card-text-muted: var(--card-text-muted);
+  --color-card-text-faint: var(--card-text-faint);
+  --color-card-border: var(--card-border);
+  --color-card-border-strong: var(--card-border-strong);
+  --color-card-ring: var(--card-ring);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-active: var(--brand-active);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-subtle-hover: var(--brand-subtle-hover);
+  --color-brand-subtle-text: var(--brand-subtle-text);
+  --color-brand-text: var(--brand-text);
+  --color-brand-text-muted: var(--brand-text-muted);
+  --color-brand-text-faint: var(--brand-text-faint);
+  --color-brand-border: var(--brand-border);
+  --color-brand-border-strong: var(--brand-border-strong);
+  --color-brand-ring: var(--brand-ring);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-subtle-hover: var(--accent-subtle-hover);
+  --color-accent-subtle-text: var(--accent-subtle-text);
+  --color-accent-text: var(--accent-text);
+  --color-accent-text-muted: var(--accent-text-muted);
+  --color-accent-text-faint: var(--accent-text-faint);
+  --color-accent-border: var(--accent-border);
+  --color-accent-border-strong: var(--accent-border-strong);
+  --color-accent-ring: var(--accent-ring);
+
+  --color-success: var(--success);
+  --color-success-hover: var(--success-hover);
+  --color-success-active: var(--success-active);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-subtle-hover: var(--success-subtle-hover);
+  --color-success-subtle-text: var(--success-subtle-text);
+  --color-success-text: var(--success-text);
+  --color-success-text-muted: var(--success-text-muted);
+  --color-success-text-faint: var(--success-text-faint);
+  --color-success-border: var(--success-border);
+  --color-success-border-strong: var(--success-border-strong);
+  --color-success-ring: var(--success-ring);
+
+  --color-warning: var(--warning);
+  --color-warning-hover: var(--warning-hover);
+  --color-warning-active: var(--warning-active);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-subtle-hover: var(--warning-subtle-hover);
+  --color-warning-subtle-text: var(--warning-subtle-text);
+  --color-warning-text: var(--warning-text);
+  --color-warning-text-muted: var(--warning-text-muted);
+  --color-warning-text-faint: var(--warning-text-faint);
+  --color-warning-border: var(--warning-border);
+  --color-warning-border-strong: var(--warning-border-strong);
+  --color-warning-ring: var(--warning-ring);
+
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-active: var(--danger-active);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-subtle-hover: var(--danger-subtle-hover);
+  --color-danger-subtle-text: var(--danger-subtle-text);
+  --color-danger-text: var(--danger-text);
+  --color-danger-text-muted: var(--danger-text-muted);
+  --color-danger-text-faint: var(--danger-text-faint);
+  --color-danger-border: var(--danger-border);
+  --color-danger-border-strong: var(--danger-border-strong);
+  --color-danger-ring: var(--danger-ring);
+
+  --color-info: var(--info);
+  --color-info-hover: var(--info-hover);
+  --color-info-active: var(--info-active);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-subtle-hover: var(--info-subtle-hover);
+  --color-info-subtle-text: var(--info-subtle-text);
+  --color-info-text: var(--info-text);
+  --color-info-text-muted: var(--info-text-muted);
+  --color-info-text-faint: var(--info-text-faint);
+  --color-info-border: var(--info-border);
+  --color-info-border-strong: var(--info-border-strong);
+  --color-info-ring: var(--info-ring);
+
+  --color-neutral: var(--neutral);
+  --color-neutral-hover: var(--neutral-hover);
+  --color-neutral-active: var(--neutral-active);
+  --color-neutral-subtle: var(--neutral-subtle);
+  --color-neutral-subtle-hover: var(--neutral-subtle-hover);
+  --color-neutral-subtle-text: var(--neutral-subtle-text);
+  --color-neutral-text: var(--neutral-text);
+  --color-neutral-text-muted: var(--neutral-text-muted);
+  --color-neutral-text-faint: var(--neutral-text-faint);
+  --color-neutral-border: var(--neutral-border);
+  --color-neutral-border-strong: var(--neutral-border-strong);
+  --color-neutral-ring: var(--neutral-ring);
+}
+
+/* V1 light mode — same semantic tokens as dark mode. */
+.light {
+  --canvas:#f5f1ef;--canvas-hover:#eee8e5;--canvas-active:#e6dedb;--canvas-subtle:#fff;--canvas-subtle-hover:#f5f1ef;--canvas-subtle-text:#675d59;--canvas-text:#211b19;--canvas-text-muted:#675d59;--canvas-text-faint:#8b817d;--canvas-border:#ded6d2;--canvas-border-strong:#c9bfba;--canvas-ring:color-mix(in oklab,#b67b20 45%,transparent);
+  --surface:#faf8f7;--surface-hover:#f2eeec;--surface-active:#eae4e1;--surface-subtle:#f5f1ef;--surface-subtle-hover:#eee8e5;--surface-subtle-text:#675d59;--surface-text:#211b19;--surface-text-muted:#675d59;--surface-text-faint:#8b817d;--surface-border:#e1dad6;--surface-border-strong:#c9bfba;--surface-ring:color-mix(in oklab,#b67b20 45%,transparent);
+  --card:#ffffff;--card-hover:#fbf8f6;--card-active:#f3eeeb;--card-subtle:#f8f4f2;--card-subtle-hover:#f0e9e6;--card-subtle-text:#675d59;--card-text:#211b19;--card-text-muted:#675d59;--card-text-faint:#8b817d;--card-border:#e2dad6;--card-border-strong:#c7bbb6;--card-ring:color-mix(in oklab,#b67b20 45%,transparent);
+  --brand:#b8121a;--brand-hover:#9f0f16;--brand-active:#870c12;--brand-subtle:#fff0f0;--brand-subtle-hover:#ffe3e4;--brand-subtle-text:#a70f17;--brand-text:#fff;--brand-text-muted:#ffe7e8;--brand-text-faint:#ffc9cb;--brand-border:#e7a9ac;--brand-border-strong:#cf6f74;--brand-ring:color-mix(in oklab,#b8121a 55%,transparent);
+  --accent:#d99628;--accent-hover:#c1821f;--accent-active:#aa7016;--accent-subtle:#fff6e5;--accent-subtle-hover:#ffedc6;--accent-subtle-text:#8a5c13;--accent-text:#211b19;--accent-text-muted:#5d451f;--accent-text-faint:#806633;--accent-border:#e8c986;--accent-border-strong:#d5ae5c;--accent-ring:color-mix(in oklab,#d99628 55%,transparent);
+  --success:#23824a;--success-hover:#1d6e3e;--success-active:#185d35;--success-subtle:#eaf7ef;--success-subtle-hover:#d9f0e2;--success-subtle-text:#1d6e3e;--success-text:#fff;--success-text-muted:#d9f0e2;--success-text-faint:#b8dfc7;--success-border:#93c9a8;--success-border-strong:#5eaa7a;--success-ring:color-mix(in oklab,#23824a 50%,transparent);
+  --warning:#b56d08;--warning-hover:#995c06;--warning-active:#7e4a04;--warning-subtle:#fff5e4;--warning-subtle-hover:#ffebc3;--warning-subtle-text:#865006;--warning-text:#211b19;--warning-text-muted:#60430f;--warning-text-faint:#7e6128;--warning-border:#e6c17e;--warning-border-strong:#d2a34e;--warning-ring:color-mix(in oklab,#b56d08 50%,transparent);
+  --danger:#b91f28;--danger-hover:#9e1921;--danger-active:#84131a;--danger-subtle:#fff0f1;--danger-subtle-hover:#ffe1e3;--danger-subtle-text:#9e1921;--danger-text:#fff;--danger-text-muted:#ffe1e3;--danger-text-faint:#f5b6ba;--danger-border:#e6a1a5;--danger-border-strong:#d36b72;--danger-ring:color-mix(in oklab,#b91f28 50%,transparent);
+  --info:#356fc4;--info-hover:#2d5ea6;--info-active:#254e89;--info-subtle:#edf4ff;--info-subtle-hover:#dce9fc;--info-subtle-text:#2d5ea6;--info-text:#fff;--info-text-muted:#dce9fc;--info-text-faint:#b8cff2;--info-border:#9dbbe7;--info-border-strong:#6f99d7;--info-ring:color-mix(in oklab,#356fc4 50%,transparent);
+  --neutral:#6f6561;--neutral-hover:#5e5551;--neutral-active:#4f4744;--neutral-subtle:#f0ecea;--neutral-subtle-hover:#e6dfdc;--neutral-subtle-text:#625955;--neutral-text:#fff;--neutral-text-muted:#eee7e4;--neutral-text-faint:#d6cbc7;--neutral-border:#cfc4bf;--neutral-border-strong:#aa9c96;--neutral-ring:color-mix(in oklab,#6f6561 45%,transparent);
+}

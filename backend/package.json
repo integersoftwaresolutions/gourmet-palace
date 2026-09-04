@@ -1,0 +1,38 @@
+{
+  "name": "gourmet-palace-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gourmet Palace Command Center API",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon --watch src --ignore storage src/server.js",
+    "start": "node src/server.js",
+    "seed:admin": "node src/scripts/seedAdmin.js",
+    "copy:mongo": "node src/scripts/copyMongoDatabase.js",
+    "import:toast-summary": "node src/scripts/importToastSalesSummary.js",
+    "worker": "node src/worker.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "connect-mongo": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.6.2",
+    "express-session": "^1.19.0",
+    "helmet": "^8.0.0",
+    "joi": "^17.13.3",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0",
+    "nodemailer": "^9.0.4"
+  },
+  "devDependencies": {
+    "@types/express-session": "^1.19.0",
+    "nodemon": "^3.1.9"
+  }
+}

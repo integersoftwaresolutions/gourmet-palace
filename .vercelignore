@@ -1,0 +1,8 @@
+Toast
+.vercel
+frontend/dist
+backend/storage
+**/.env
+**/.env.local
+!**/.env.example
+!.env.vercel.example

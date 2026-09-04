@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+@import './styles/theme.css';
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface);
+    color: var(--color-surface-text);
+    font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  .font-display {
+    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  }
+
+  .font-script {
+    font-family: 'Great Vibes', 'Cormorant Garamond', cursive;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-subtle-hover);
+    color: var(--color-surface-text);
+  }
+
+  /* Focus lands on the accent ring for every role unless a component
+     overrides it with its own {role}-ring token. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-ring);
+    outline-offset: 2px;
+  }
+}

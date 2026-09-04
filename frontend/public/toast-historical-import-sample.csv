@@ -1,0 +1,5 @@
+orderId,businessDate,netSales,grossSales,discounts,refunds,channel,itemId,itemName,itemCategory,itemQuantity,itemNetSales
+T-1001,2026-01-15,42.50,45.00,2.50,0,Dine In,ITM-1,Chicken Kabob,Entree,1,28.00
+T-1001,2026-01-15,42.50,45.00,2.50,0,Dine In,ITM-2,Garlic Naan,Sides,2,14.50
+T-1002,2026-01-15,18.00,18.00,0,0,Takeout,ITM-3,Mango Lassi,Beverage,2,18.00
+T-1003,2026-01-16,31.20,36.00,0,4.80,Delivery,ITM-1,Chicken Kabob,Entree,1,31.20

@@ -1,0 +1,2 @@
+const test=require('node:test');const assert=require('node:assert/strict');const {completedBusinessDateFromParts}=require('../src/workers/businessDate');
+test('completed business date respects 4 AM local cutoff',()=>{assert.equal(completedBusinessDateFromParts({year:'2026',month:'08',day:'16',hour:'03'}),'2026-08-14');assert.equal(completedBusinessDateFromParts({year:'2026',month:'08',day:'16',hour:'04'}),'2026-08-15');assert.equal(completedBusinessDateFromParts({year:'2026',month:'01',day:'01',hour:'02'}),'2025-12-30')});
