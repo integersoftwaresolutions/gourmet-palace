@@ -120,4 +120,6 @@ if (env.nodeEnv === 'production' && env.storage.provider !== 's3') throw new Err
 if (env.nodeEnv === 'production' && !env.storage.bucket) throw new Error('S3_BUCKET is required in production');
 if (env.nodeEnv === 'production' && env.storage.endpoint && (!env.storage.accessKeyId || !env.storage.secretAccessKey) && (!env.aws.accessKeyId || !env.aws.secretAccessKey) && !process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI) throw new Error('Custom S3-compatible endpoints require S3 credentials or an available AWS credential provider');
 
+/** Support both CJS require and bundlers that expect `default`. */
 module.exports = env;
+module.exports.default = env;

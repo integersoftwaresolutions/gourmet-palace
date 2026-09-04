@@ -1,9 +1,14 @@
 const ApiError = require('../utils/ApiError');
-const env = require('../config/env');
+const env = require('../config/getEnv')();
 
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 function normalizedOrigins() {
-  return new Set([env.corsOrigin, env.appUrl].filter(Boolean).flatMap((value) => String(value).split(',')).map((value) => value.trim().replace(/\/$/, '')));
+  return new Set(
+    [env.corsOrigin, env.appUrl, process.env.CORS_ORIGIN, process.env.APP_URL, process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`]
+      .filter(Boolean)
+      .flatMap((value) => String(value).split(','))
+      .map((value) => value.trim().replace(/\/$/, '')),
+  );
 }
 
 module.exports = function originGuard(req, res, next) {

@@ -1,6 +1,6 @@
 const session = require('express-session');
 const { MongoStore } = require('connect-mongo');
-const env = require('./env');
+const env = require('./getEnv')();
 
 function createSessionMiddleware() {
   return session({

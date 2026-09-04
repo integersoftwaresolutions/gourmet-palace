@@ -3,7 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
-const env = require('./config/env');
+const env = require('./config/getEnv')();
 const { connectDB } = require('./config/db');
 const { createSessionMiddleware } = require('./config/session');
 const routes = require('./routes');
@@ -28,17 +28,29 @@ app.use(async (req, res, next) => {
 });
 
 app.use(helmet());
-const allowedOrigins = env.corsOrigin.split(',').map((value) => value.trim()).filter(Boolean);
+const allowedOrigins = String(
+  env.corsOrigin
+  || process.env.CORS_ORIGIN
+  || process.env.APP_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
+  || 'http://localhost:5173',
+)
+  .split(',')
+  .map((value) => value.trim().replace(/\/$/, ''))
+  .filter(Boolean);
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) return callback(null, true);
       return callback(new Error('Origin is not allowed by CORS'));
     },
     credentials: true,
   }),
 );
-morgan.token('safe-url', (req) => req.originalUrl?.split('?')[0] || req.url?.split('?')[0] || '');
+morgan.token('safe-url', (req) => {
+  const raw = req.originalUrl || req.url || '';
+  return String(raw).split('?')[0] || '';
+});
 app.use(morgan(env.nodeEnv === 'production' ? ':remote-addr - :remote-user [:date[clf]] \" :method :safe-url HTTP/:http-version\" :status :res[content-length] \"-\" \":user-agent\"' : ':method :safe-url :status :response-time ms'));
 app.use(express.json({ limit: '32mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -53,3 +65,4 @@ app.use(notFoundMiddleware);
 app.use(errorMiddleware);
 
 module.exports = app;
+module.exports.default = app;
