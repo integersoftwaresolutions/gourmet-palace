@@ -76,7 +76,7 @@ const env = {
   secretEncryptionKey: process.env.SECRET_ENCRYPTION_KEY || '',
   secretStoreProvider: process.env.SECRET_STORE_PROVIDER || (process.env.NODE_ENV === 'production' ? 'aws' : 'local'),
   secretStorePrefix: process.env.SECRET_STORE_PREFIX || 'gourmet-palace',
-  localSecretsDir: process.env.LOCAL_SECRETS_DIR || 'storage/secrets',
+  localSecretsDir: process.env.LOCAL_SECRETS_DIR || (process.env.VERCEL ? '/tmp/gp-secrets' : 'storage/secrets'),
   aws: {
     region: process.env.AWS_REGION || process.env.S3_REGION || 'us-west-2',
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -84,7 +84,7 @@ const env = {
     sessionToken: process.env.AWS_SESSION_TOKEN || '',
   },
   fileSigningSecret: process.env.FILE_SIGNING_SECRET || '',
-  localStorageDir: process.env.LOCAL_STORAGE_DIR || 'storage/private',
+  localStorageDir: process.env.LOCAL_STORAGE_DIR || (process.env.VERCEL ? '/tmp/gp-storage' : 'storage/private'),
   storage: {
     provider: process.env.STORAGE_PROVIDER || (process.env.NODE_ENV === 'production' ? 's3' : 'local'),
     endpoint: process.env.S3_ENDPOINT || '',
@@ -115,10 +115,21 @@ const env = {
 
 if (!process.env.SESSION_SECRET && env.nodeEnv === 'production') throw new Error('SESSION_SECRET is required in production');
 if (env.nodeEnv === 'production' && !env.fileSigningSecret) throw new Error('FILE_SIGNING_SECRET is required in production');
-if (env.nodeEnv === 'production' && env.secretStoreProvider !== 'aws') throw new Error('SECRET_STORE_PROVIDER=aws is required in production');
-if (env.nodeEnv === 'production' && env.storage.provider !== 's3') throw new Error('STORAGE_PROVIDER=s3 is required in production');
-if (env.nodeEnv === 'production' && !env.storage.bucket) throw new Error('S3_BUCKET is required in production');
+/** On Vercel, local secret/file stores use /tmp so a first deploy can boot without AWS. Prefer aws/s3 in real production. */
+const onVercel = process.env.VERCEL === '1';
+if (env.nodeEnv === 'production' && env.secretStoreProvider !== 'aws' && !onVercel) throw new Error('SECRET_STORE_PROVIDER=aws is required in production');
+if (env.nodeEnv === 'production' && env.storage.provider !== 's3' && !onVercel) throw new Error('STORAGE_PROVIDER=s3 is required in production');
+if (env.nodeEnv === 'production' && env.storage.provider === 's3' && !env.storage.bucket) throw new Error('S3_BUCKET is required in production');
 if (env.nodeEnv === 'production' && env.storage.endpoint && (!env.storage.accessKeyId || !env.storage.secretAccessKey) && (!env.aws.accessKeyId || !env.aws.secretAccessKey) && !process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI) throw new Error('Custom S3-compatible endpoints require S3 credentials or an available AWS credential provider');
+
+/** Always resolve DB URI from the live process env (Vercel may not freeze object literals correctly). */
+Object.defineProperty(env, 'mongodbUri', {
+  enumerable: true,
+  configurable: true,
+  get() {
+    return process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb://127.0.0.1:27017/gourmet-palace';
+  },
+});
 
 /** Support both CJS require and bundlers that expect `default`. */
 module.exports = env;

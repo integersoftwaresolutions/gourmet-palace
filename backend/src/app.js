@@ -57,7 +57,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(originGuard);
 app.use(correlationMiddleware);
-app.use(createSessionMiddleware());
+let sessionMiddleware;
+app.use((req, res, next) => {
+  try {
+    if (!sessionMiddleware) sessionMiddleware = createSessionMiddleware();
+    return sessionMiddleware(req, res, next);
+  } catch (err) {
+    return next(err);
+  }
+});
 
 app.use('/api/v1', apiRateLimit, routes);
 
