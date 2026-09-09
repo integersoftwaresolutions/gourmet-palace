@@ -16,6 +16,7 @@ import { useAsyncResource } from '../hooks/useAsyncResource'
 import {
   alertLocationLine,
   briefHeadline,
+  comparisonDeltaLabel,
   comparisonWeekdayLabel,
   enrichPriorities,
   firstName,
@@ -55,7 +56,7 @@ function priorityTitle(priority: DashboardData['priorities'][number]): string {
 }
 
 export function OverviewPage() {
-  const { query, locations, datePreset } = useAppState()
+  const { query, locations, datePreset, comparisonMode } = useAppState()
   const { user } = useAuth()
   const { data: page, error, isLoading, isRefreshing, reload } = useAsyncResource(
     async () => {
@@ -83,7 +84,10 @@ export function OverviewPage() {
   const priorDayLabel = data ? formatPriorBusinessDay(data.range.to) : '—'
   const isSingleDay = Boolean(data && data.range.from === data.range.to)
   const vsLabel = data
-    ? `VS ${comparisonWeekdayLabel(data.comparison.previousRange.to)}`
+    ? comparisonDeltaLabel({
+        basis: comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: data.comparison.previousRange,
+      })
     : undefined
 
   const scores = data?.scores ?? []
@@ -91,18 +95,19 @@ export function OverviewPage() {
   const weakest = scores.length ? scores[scores.length - 1] : null
   const briefContent = (brief?.content ?? {}) as Record<string, unknown>
   const priorities = enrichPriorities(data?.priorities ?? [], data?.workflow)
+  const alerts = data?.alerts ?? []
   const healthChange = data?.businessHealthComparison.change ?? null
   const healthStatus = healthStatusLabel(healthChange)
 
   const openAlertTypesByLocation = useMemo(() => {
     const map = new Map<string, Set<string>>()
-    for (const alert of data?.alerts ?? []) {
+    for (const alert of alerts) {
       const id = typeof alert.locationId === 'object' && alert.locationId ? String(alert.locationId._id) : String(alert.locationId || 'org')
       if (!map.has(id)) map.set(id, new Set())
       map.get(id)!.add(alert.type)
     }
     return map
-  }, [data?.alerts])
+  }, [alerts])
 
   const greeting = (
     <p className="font-display text-xl italic text-accent-subtle-text md:text-2xl">
@@ -358,12 +363,12 @@ export function OverviewPage() {
             padding="md"
           >
             <div className="space-y-2">
-              {data.alerts.length === 0 ? (
+              {alerts.length === 0 ? (
                 <p className="text-sm text-card-text-muted">
                   No open alerts in the selected scope.
                 </p>
               ) : (
-                data.alerts.slice(0, 5).map((alert) => (
+                alerts.slice(0, 5).map((alert) => (
                   <AlertRow
                     key={alert._id}
                     severity={alert.severity}

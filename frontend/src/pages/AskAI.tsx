@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FiArrowRight, FiThumbsDown, FiThumbsUp, FiX } from 'react-icons/fi'
 import { useAuth } from '../context/useAuth'
 import { useAppState } from '../context/useAppState'
-import { Pill } from '../components/ui'
+import { Drawer, Pill } from '../components/ui'
 import { cn } from '../lib/cn'
 import { chatApi } from '../lib/api'
 import { asyncMessage } from '../lib/asyncError'
@@ -49,8 +49,6 @@ export function AskAI({ open, onClose }: AskAIProps) {
     setSelectedLocationId,
   } = useAppState()
   const navigate = useNavigate()
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -101,16 +99,8 @@ export function AskAI({ open, onClose }: AskAIProps) {
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current()
-    }
-    document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     const t = window.setTimeout(() => inputRef.current?.focus(), 50)
     return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
       window.clearTimeout(t)
     }
   }, [open])
@@ -122,8 +112,6 @@ export function AskAI({ open, onClose }: AskAIProps) {
       behavior: 'smooth',
     })
   }, [messages, open, busy])
-
-  if (!open) return null
 
   const firstName = (user?.name || 'there').split(/\s+/)[0] || 'there'
 
@@ -179,20 +167,7 @@ export function AskAI({ open, onClose }: AskAIProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60]" role="presentation">
-      <button
-        type="button"
-        className="absolute inset-0 bg-canvas/65"
-        aria-label="Close Ask AI"
-        onClick={onClose}
-      />
-
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ask-ai-title"
-        className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-card-border bg-card shadow-xl"
-      >
+    <Drawer open={open} onClose={onClose} labelledBy="ask-ai-title">
         <div className="flex items-start justify-between gap-3 border-b border-card-border px-5 py-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -363,7 +338,6 @@ export function AskAI({ open, onClose }: AskAIProps) {
             actions from chat
           </p>
         </div>
-      </aside>
-    </div>
+    </Drawer>
   )
 }

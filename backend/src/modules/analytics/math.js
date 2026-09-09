@@ -127,7 +127,7 @@ function summarizeSeoMetrics(seo,priorSeo){
       status:direct.length?'COMPLETE':'UNAVAILABLE',
       revenuePct:changePct(direct.length?sumMetric(direct,'revenue'):null,directPrior.length?sumMetric(directPrior,'revenue'):null),
     },
-    freshnessAt:latestFreshness(seo),
+    freshnessAt:latestFreshness((seo||[]).filter(row=>row.status==='COMPLETE')),
     locations:[...new Set((seo||[]).map((row)=>String(row.locationId)))].length,
   };
 }

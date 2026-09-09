@@ -1,6 +1,6 @@
 const mongoose=require('mongoose');
 const Order=require('../../models/Order'); const DailyMetric=require('../../models/DailyMetric'); const Location=require('../../models/Location'); const LocationScore=require('../../models/LocationScore'); const Baseline=require('../../models/Baseline'); const Forecast=require('../../models/Forecast'); const Invoice=require('../../models/Invoice'); const SeoMetric=require('../../models/SeoMetric'); const Review=require('../../models/Review'); const Alert=require('../../models/Alert');
-const settings=require('../settings/settings.service'); const {applyScope,authorizedLocationFilter}=require('../../utils/scope'); const {parseRange,previousRange,priorYearRange,addDays}=require('../../utils/dateRange'); const ApiError=require('../../utils/ApiError'); const env=require('../../config/env');
+const settings=require('../settings/settings.service'); const {applyScope,authorizedLocationFilter}=require('../../utils/scope'); const {parseRange,previousRange,priorYearRange,addDays}=require('../../utils/dateRange'); const {parsePagination,paginatedResult}=require('../../utils/pagination'); const ApiError=require('../../utils/ApiError'); const env=require('../../config/env');
 const {median,boundedTrendExpectation,salesWeightedHealth,clusterExceptionOrders,buildWeekForecast,summarizeSeoMetrics}=require('./math');
 const pct=(v,b)=>b?((v-b)/Math.abs(b))*100:null;
 async function rebuildDaily({organizationId,locationId,businessDate}){
@@ -207,7 +207,20 @@ async function performance(auth,query){
   const dayparts=daypartOrder.map((label)=>({label,netMoney:daypartMap.get(label)||0}));
   return {...summary,channels,topItems:ranked.sort((a,b)=>b.revenue-a.revenue).slice(0,20),slowItems:ranked.filter(item=>item.units>=1).sort((a,b)=>a.revenue-b.revenue).slice(0,20),categories:[...cats.entries()].map(([name,revenue])=>({name,revenue})).sort((a,b)=>b.revenue-a.revenue),locationComparisons,locationScores,summaryLine:narration.text,summaryMode:narration.mode,sourceProviders,guestSource,peerComparison,dayparts,daypartStatus:stamped?(stamped>=Math.max(1,daypartRows.length)*.5?'COMPLETE':'PARTIAL'):'UNAVAILABLE',exceptionClusters};
 }
-async function orders(auth,query){const range=parseRange(query);const page=Math.max(1,Math.min(10000,Number(query.page)||1)),limit=Math.max(1,Math.min(100,Number(query.limit)||50));const filter=applyScope(auth,{businessDate:{$gte:range.from,$lte:range.to}},query.locationId);if(query.exception==='true')filter.$or=[{refundMoney:{$gt:0}},{voidMoney:{$gt:0}},{discountMoney:{$gt:0}},{orderState:'CANCELED'}];const [rows,total]=await Promise.all([Order.find(filter).populate('locationId','name').sort({sourceTimestamp:-1,_id:-1}).skip((page-1)*limit).limit(limit).lean(),Order.countDocuments(filter)]);return {range,page,limit,total,orders:rows.map(({rawRef,...row})=>row)};}
+async function orders(auth,query){
+  const range=parseRange(query);
+  const {page,limit,skip}=parsePagination(query,{defaultLimit:25,maxLimit:100});
+  const filter=applyScope(auth,{businessDate:{$gte:range.from,$lte:range.to}},query.locationId);
+  if(query.exception==='true')filter.$or=[{refundMoney:{$gt:0}},{voidMoney:{$gt:0}},{discountMoney:{$gt:0}},{orderState:'CANCELED'}];
+  const [rows,total]=await Promise.all([
+    Order.find(filter).populate('locationId','name').sort({sourceTimestamp:-1,_id:-1}).skip(skip).limit(limit).lean(),
+    Order.countDocuments(filter),
+  ]);
+  return {
+    range,
+    ...paginatedResult('orders',rows.map(({rawRef,...row})=>row),{page,limit,total}),
+  };
+}
 
 function emptyForecastDays(weekStart){
   return Array.from({length:7},(_,i)=>{
@@ -291,7 +304,7 @@ async function presence(auth,query){
   const checks=[['ga4','sessions','organic/website sessions'],['gsc','clicks','Search Console clicks'],['square_direct','revenue','direct-order revenue']];
   for(const [source,key,label] of checks){
     const current=total(seo,source,key),previous=total(priorSeo,source,key);
-    if(previous>0&&current<previous*.9)recommendations.push({source,metric:key,period:range,confidence:'HIGH',evidence:{current,previous,changePct:(current-previous)/previous},recommendation:`Investigate the decline in ${label}; compare the affected location, landing pages/channels, and the prior period before taking action.`});
+    if(seo.some(x=>x.source===source&&x.status==='COMPLETE')&&previous>0&&current<previous*.9)recommendations.push({source,metric:key,period:range,confidence:'HIGH',evidence:{current,previous,changePct:(current-previous)/previous},recommendation:`Investigate the decline in ${label}; compare the affected location, landing pages/channels, and the prior period before taking action.`});
   }
   const gsc=seo.filter(x=>x.source==='gsc'&&x.status==='COMPLETE');
   const impressions=gsc.reduce((sum,x)=>sum+Number(x.metrics?.impressions||0),0),clicks=gsc.reduce((sum,x)=>sum+Number(x.metrics?.clicks||0),0);
@@ -302,12 +315,12 @@ async function presence(auth,query){
   const byLoc=new Map();
   for(const row of seo){
     const id=String(row.locationId);
-    const cur=byLoc.get(id)||{locationId:id,locationName:nameById.get(id)||'Location',ga4Sessions:0,gscClicks:0,directRevenue:0,gbpClicks:0};
+    const cur=byLoc.get(id)||{locationId:id,locationName:nameById.get(id)||'Location',ga4Sessions:null,gscClicks:null,directRevenue:null,gbpClicks:null};
     if(row.status==='COMPLETE'){
-      if(row.source==='ga4')cur.ga4Sessions+=Number(row.metrics?.sessions||0);
-      if(row.source==='gsc')cur.gscClicks+=Number(row.metrics?.clicks||0);
-      if(row.source==='square_direct')cur.directRevenue+=Number(row.metrics?.revenue||0);
-      if(row.source==='gbp')cur.gbpClicks+=Number(row.metrics?.website_clicks||0);
+      if(row.source==='ga4')cur.ga4Sessions=(cur.ga4Sessions??0)+Number(row.metrics?.sessions||0);
+      if(row.source==='gsc')cur.gscClicks=(cur.gscClicks??0)+Number(row.metrics?.clicks||0);
+      if(row.source==='square_direct')cur.directRevenue=(cur.directRevenue??0)+Number(row.metrics?.revenue||0);
+      if(row.source==='gbp')cur.gbpClicks=(cur.gbpClicks??0)+Number(row.metrics?.website_clicks||0);
     }
     byLoc.set(id,cur);
   }

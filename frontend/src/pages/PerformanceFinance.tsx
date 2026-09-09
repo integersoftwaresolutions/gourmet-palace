@@ -8,7 +8,7 @@ import { chartColors } from '../components/ui/charts/chartTheme'
 import { analyticsApi, type FinanceData } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
 import { money, ratioPercent } from '../lib/format'
-import { comparisonWeekdayLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { comparisonDeltaLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
 
 function sourceLine(providers: string[] | undefined, status: string, gross: number | null) {
@@ -71,17 +71,17 @@ export function PerformanceFinance() {
   )
 
   const vsLabel = data
-    ? comparisonMode === 'prior-year'
-      ? 'VS LY'
-      : `VS ${comparisonWeekdayLabel(data.comparison.previousRange.to)}`
+    ? comparisonDeltaLabel({
+        basis: comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: data.comparison.previousRange,
+      })
     : undefined
   const mtd = data?.periodSummaries.mtd
   const mtdVs = data
-    ? comparisonMode === 'prior-year'
-      ? 'VS LY'
-      : mtd?.comparison.previousRange
-        ? `VS ${comparisonWeekdayLabel(mtd.comparison.previousRange.to)}`
-        : undefined
+    ? comparisonDeltaLabel({
+        basis: comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: mtd?.comparison.previousRange,
+      })
     : undefined
   const chartRows = useMemo(() => {
     const rows = data?.dailyTrend || []

@@ -240,7 +240,7 @@ async function upsertSeo({ organizationId, locationId, businessDate, source, met
       metrics: metrics || {},
       status,
       ingestTimestamp: new Date(),
-      freshnessAt: new Date(),
+      freshnessAt: status === 'COMPLETE' ? new Date() : null,
       ...(error ? { dimensions: { error: String(error).slice(0, 400) } } : {}),
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
@@ -279,6 +279,7 @@ async function syncGa4({ token, organizationId, locationId, propertyId, from, to
       status: metrics ? 'COMPLETE' : 'UNAVAILABLE',
     });
   }
+  return byDate.size;
 }
 
 async function syncGsc({ token, organizationId, locationId, siteUrl, from, to }) {
@@ -311,13 +312,15 @@ async function syncGsc({ token, organizationId, locationId, siteUrl, from, to })
       status: metrics ? 'COMPLETE' : 'UNAVAILABLE',
     });
   }
+  return byDate.size;
 }
 
 async function syncGbp({ token, organizationId, locationId, gbpLocationName, from, to }) {
+  let performanceError;
   const daily = await googleFetch(
     token,
     `https://businessprofileperformance.googleapis.com/v1/${gbpLocationName}:fetchMultiDailyMetricsTimeSeries?dailyMetrics=WEBSITE_CLICKS&dailyMetrics=CALL_CLICKS&dailyMetrics=BUSINESS_DIRECTION_REQUESTS&dailyMetrics=BUSINESS_IMPRESSIONS_DESKTOP_MAPS&dailyMetrics=BUSINESS_IMPRESSIONS_MOBILE_SEARCH&dailyRange.start_date.year=${from.slice(0, 4)}&dailyRange.start_date.month=${Number(from.slice(5, 7))}&dailyRange.start_date.day=${Number(from.slice(8, 10))}&dailyRange.end_date.year=${to.slice(0, 4)}&dailyRange.end_date.month=${Number(to.slice(5, 7))}&dailyRange.end_date.day=${Number(to.slice(8, 10))}`,
-  ).catch(() => null);
+  ).catch((err) => { performanceError = err; return null; });
 
   const byDate = new Map();
   for (const series of daily?.multiDailyMetricTimeSeries || []) {
@@ -371,6 +374,8 @@ async function syncGbp({ token, organizationId, locationId, gbpLocationName, fro
     }
     pageToken = data.nextPageToken;
   } while (pageToken);
+  if (performanceError) throw performanceError;
+  return byDate.size;
 }
 
 async function googleSync({ organizationId, locationId, preset = '7d', from, to }) {
@@ -399,39 +404,37 @@ async function googleSync({ organizationId, locationId, preset = '7d', from, to 
   );
 
   const errors = {};
+  const sources = {};
   try {
-    if (mapping.ga4PropertyId) {
-      try { await syncGa4({ token, organizationId, locationId, propertyId: mapping.ga4PropertyId, from: range.from, to: range.to }); }
-      catch (err) { errors.ga4 = err.message; }
-    } else {
-      for (const businessDate of daysInRange(range.from, range.to)) {
-        await upsertSeo({ organizationId, locationId, businessDate, source: 'ga4', status: 'UNAVAILABLE' });
+    const tasks = [
+      ['ga4', mapping.ga4PropertyId, () => syncGa4({ token, organizationId, locationId, propertyId: mapping.ga4PropertyId, from: range.from, to: range.to })],
+      ['gsc', mapping.gscSiteUrl, () => syncGsc({ token, organizationId, locationId, siteUrl: mapping.gscSiteUrl, from: range.from, to: range.to })],
+      ['gbp', mapping.gbpLocationName, () => syncGbp({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName, from: range.from, to: range.to })],
+    ];
+    for (const [source, mapped, sync] of tasks) {
+      if (!mapped) {
+        sources[source] = { status: 'UNMAPPED', daysImported: 0 };
+        for (const businessDate of daysInRange(range.from, range.to)) {
+          await upsertSeo({ organizationId, locationId, businessDate, source, status: 'UNAVAILABLE' });
+        }
+        continue;
+      }
+      try {
+        const daysImported = await sync();
+        sources[source] = { status: daysImported ? 'IMPORTED' : 'NO_DATA', daysImported };
+      } catch (err) {
+        errors[source] = err.message;
+        sources[source] = { status: 'ERROR', daysImported: 0 };
       }
     }
-    if (mapping.gscSiteUrl) {
-      try { await syncGsc({ token, organizationId, locationId, siteUrl: mapping.gscSiteUrl, from: range.from, to: range.to }); }
-      catch (err) { errors.gsc = err.message; }
-    } else {
-      for (const businessDate of daysInRange(range.from, range.to)) {
-        await upsertSeo({ organizationId, locationId, businessDate, source: 'gsc', status: 'UNAVAILABLE' });
-      }
-    }
-    if (mapping.gbpLocationName) {
-      try { await syncGbp({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName, from: range.from, to: range.to }); }
-      catch (err) { errors.gbp = err.message; }
-    } else {
-      for (const businessDate of daysInRange(range.from, range.to)) {
-        await upsertSeo({ organizationId, locationId, businessDate, source: 'gbp', status: 'UNAVAILABLE' });
-      }
-    }
-
-    const failed = Object.keys(errors);
-    conn.lastSuccessAt = new Date();
-    conn.status = failed.length ? 'PARTIAL' : 'READY';
-    conn.lastError = failed.length ? JSON.stringify(errors).slice(0, 1000) : null;
+    const imported = Object.values(sources).some((source) => source.status === 'IMPORTED');
+    const complete = Object.values(sources).every((source) => source.status === 'IMPORTED');
+    if (imported) conn.lastSuccessAt = new Date();
+    conn.status = complete ? 'READY' : 'PARTIAL';
+    conn.lastError = Object.keys(errors).length ? JSON.stringify(errors).slice(0, 1000) : null;
     await conn.save();
-    const result = { range, errors, mapped: mapping };
-    job.status = failed.length ? 'PARTIAL' : 'COMPLETE';
+    const result = { range, errors, mapped: mapping, sources };
+    job.status = complete ? 'COMPLETE' : 'PARTIAL';
     job.result = result;
     job.finishedAt = new Date();
     await job.save();

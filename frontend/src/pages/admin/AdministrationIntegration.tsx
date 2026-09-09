@@ -42,7 +42,7 @@ function squareDrafts(connections: ConnectionRecord[]) {
 }
 
 export function AdministrationIntegration() {
-  const { locations } = useAppState()
+  const { locations, selectedLocationId } = useAppState()
   const [searchParams] = useSearchParams()
   const { data: rows, error, isLoading, isRefreshing, reload } = useAsyncResource(
     () => integrationsApi.list().then((r) => r.data.connections),
@@ -51,6 +51,7 @@ export function AdministrationIntegration() {
   )
   const [actionError, setActionError] = useState('')
   const [notice, setNotice] = useState('')
+  const [googleSyncBusy, setGoogleSyncBusy] = useState(false)
   const [toastLoc, setToastLoc] = useState('')
   const [channels, setChannels] = useState<Record<ChannelKey, string>>(emptyChannels)
   const [channelsApproved, setChannelsApproved] = useState(false)
@@ -191,15 +192,39 @@ export function AdministrationIntegration() {
   const gscSites = Array.isArray(gMeta.gscSites) ? gMeta.gscSites as Array<Record<string, unknown>> : []
   const gbpLocations = Array.isArray(gMeta.gbpLocations) ? gMeta.gbpLocations as Array<Record<string, unknown>> : []
   const googleSyncNow = async () => {
-    const loc = locations.find((l) => l.status === 'active')
-    if (!loc) return
+    if (googleSyncBusy) return
+    const targets = locations.filter((l) => l.status === 'active' && (selectedLocationId === 'all' || l.id === selectedLocationId))
+    if (!targets.length) {
+      setActionError('No active locations in the selected scope.')
+      return
+    }
+    setGoogleSyncBusy(true)
+    setActionError('')
+    setNotice('')
+    const results: string[] = []
+    const failures: string[] = []
     try {
-      setActionError('')
-      await integrationsApi.googleSync(loc.id, '7d')
-      setNotice('Google 7-day sync finished. Unmapped sources remain Unavailable.')
+      for (const loc of targets) {
+        try {
+          const { data } = await integrationsApi.googleSync(loc.id, '7d')
+          const details = Object.entries(data.sources).map(([source, result]) => {
+            const label = source.toUpperCase()
+            if (result.status === 'IMPORTED') return `${label}: ${result.daysImported} days imported`
+            if (result.status === 'UNMAPPED') return `${label}: not mapped`
+            if (result.status === 'NO_DATA') return `${label}: no daily data returned`
+            return `${label}: failed`
+          })
+          results.push(`${loc.name} (${data.range.from} to ${data.range.to}): ${details.join('; ')}.`)
+          for (const [source, error] of Object.entries(data.errors)) failures.push(`${loc.name} ${source.toUpperCase()}: ${error}`)
+        } catch (e) {
+          failures.push(`${loc.name}: ${asyncMessage(e, 'Google sync failed')}`)
+        }
+      }
+      setNotice(results.join('\n'))
+      setActionError(failures.join(' '))
       reload()
-    } catch (e) {
-      setActionError(asyncMessage(e, 'Google sync failed'))
+    } finally {
+      setGoogleSyncBusy(false)
     }
   }
 
@@ -207,7 +232,7 @@ export function AdministrationIntegration() {
     <AppShell title="Integrations" subtitle="Square live POS, Google (GA4 / Search Console / Business Profile), Toast historical-only import, and canonical mappings" activeNav="admin">
       <AdminTabs value="integrations" />
       {displayError && <QueryError message={displayError} className="mt-5" />}
-      {notice && <Card accentBorder="accent" className="mt-4"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
+      {notice && <Card accentBorder="accent" className="mt-4"><p className="whitespace-pre-line text-sm text-card-text-muted">{notice}</p></Card>}
       <QueryState data={rows} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<DualPanelSkeleton />}>
         {() => (
       <div className="space-y-5">
@@ -231,14 +256,14 @@ export function AdministrationIntegration() {
           title="Google · GA4 / Search Console / Business Profile"
           action={<Pill tone={google?.status === 'READY' ? 'success' : google?.status === 'PARTIAL' ? 'warning' : google?.status === 'ERROR' ? 'danger' : 'neutral'} variant="outline">{google?.status || 'UNAVAILABLE'}</Pill>}
         >
-          <p className="text-sm text-card-text-muted">One OAuth connect covers GA4, Search Console, and Google Business Profile. Missing capabilities stay Partial/Unavailable rather than zero.</p>
+          <p className="text-sm text-card-text-muted">Sync uses the selected location, or every active location for All locations. It imports daily reports through yesterday. Unmapped sources and empty reports remain unavailable.</p>
           {google?.lastError && <p className="mt-2 text-xs text-danger-subtle-text">{google.lastError}</p>}
           <div className="mt-4 flex flex-wrap gap-2">
             {!google ? <Button size="sm" onClick={() => void connect('google')}>Connect with OAuth</Button> : (
               <>
                 <Button size="sm" variant="outline" onClick={() => void discover('google')}>Refresh resources</Button>
                 <Button size="sm" variant="outline" onClick={() => void connect('google')}>Reconnect</Button>
-                <Button size="sm" variant="outline" onClick={() => void googleSyncNow()}>Sync last 7 days</Button>
+                <Button size="sm" variant="outline" disabled={googleSyncBusy} onClick={() => void googleSyncNow()}>{googleSyncBusy ? 'Syncing...' : 'Sync last 7 days'}</Button>
               </>
             )}
           </div>

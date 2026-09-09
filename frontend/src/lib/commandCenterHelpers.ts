@@ -26,6 +26,34 @@ export function comparisonWeekdayLabel(dateStr: string): string {
   return days[d.getUTCDay()] ?? 'PRIOR'
 }
 
+/** Short range for helper copy, e.g. "Aug 29–31" or "Aug 31". */
+export function formatComparisonRangeLabel(range: { from: string; to: string }): string {
+  const fmt = (s: string) =>
+    new Date(`${s}T12:00:00Z`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    })
+  if (range.from === range.to) return fmt(range.from)
+  return `${fmt(range.from)}–${fmt(range.to)}`
+}
+
+/**
+ * Compact delta chip label. Avoids misleading "VS MON" on multi-day ranges
+ * (that used to be only the weekday of previousRange.to).
+ */
+export function comparisonDeltaLabel(options: {
+  basis: 'previous' | 'prior-year' | 'peers'
+  previousRange?: { from: string; to: string } | null
+}): string {
+  if (options.basis === 'peers') return 'VS OTHER STORES'
+  if (options.basis === 'prior-year') return 'VS PRIOR YEAR'
+  const prev = options.previousRange
+  if (!prev?.from || !prev?.to) return 'VS PRIOR PERIOD'
+  if (prev.from === prev.to) return `VS PRIOR ${comparisonWeekdayLabel(prev.to)}`
+  return 'VS PRIOR PERIOD'
+}
+
 export function healthStatusLabel(change: number | null): 'STABLE' | 'IMPROVING' | 'ATTENTION' | 'UNAVAILABLE' {
   if (change == null) return 'UNAVAILABLE'
   if (change >= 3) return 'IMPROVING'

@@ -3,13 +3,17 @@ import { AppShell } from '../components/layout/AppShell'
 import { PerformanceTabs } from '../components/layout/SectionTabs'
 import { AlertRow } from '../components/command-center/AlertRow'
 import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
-import { QueryState, DualPanelSkeleton, KpiRowSkeleton } from '../components/query'
-import { Card, Pill, Table } from '../components/ui'
+import { QueryError, QueryState, DualPanelSkeleton, KpiRowSkeleton } from '../components/query'
+import { Card, Pagination, Pill, Table } from '../components/ui'
 import { analyticsApi, type ExceptionCluster, type OrderRecord, type PerformanceData } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
+import { usePagination } from '../hooks/usePagination'
 import { money } from '../lib/format'
-import { comparisonWeekdayLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { normalizePaginationMeta, toPaginationQuery } from '../lib/pagination'
+import { comparisonDeltaLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
+
+const EXCEPTION_TABLE_HEIGHT = '26rem'
 
 const channelLabels: Record<string, string> = {
   dine_in: 'Dine-in',
@@ -124,23 +128,45 @@ function exceptionFeed(data: PerformanceData) {
 
 export function PerformanceOperations() {
   const { query, comparisonMode } = useAppState()
-  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
-    async () => {
-      const [performanceRes, ordersRes] = await Promise.all([
-        analyticsApi.performance(query),
-        analyticsApi.orders({ ...query, exception: 'true', limit: '50' }),
-      ])
-      return { performance: performanceRes.data, orders: ordersRes.data }
-    },
+  const queryKey = useMemo(() => JSON.stringify(query), [query])
+  const { page, limit, setPage, setLimit } = usePagination({ resetKey: queryKey })
+
+  const {
+    data: performance,
+    error,
+    isLoading,
+    isRefreshing,
+    reload,
+  } = useAsyncResource(
+    async () => (await analyticsApi.performance(query)).data,
     [query],
     { fallbackError: 'Unable to load operations performance' },
   )
 
-  const performance = data?.performance ?? null
+  const {
+    data: orders,
+    error: ordersError,
+    isLoading: ordersLoading,
+    isRefreshing: ordersRefreshing,
+    reload: reloadOrders,
+  } = useAsyncResource(
+    async () =>
+      (
+        await analyticsApi.orders({
+          ...query,
+          exception: 'true',
+          ...toPaginationQuery(page, limit),
+        })
+      ).data,
+    [query, page, limit],
+    { fallbackError: 'Unable to load exception orders' },
+  )
+
   const vsLabel = performance
-    ? comparisonMode === 'prior-year'
-      ? 'VS LY'
-      : `VS ${comparisonWeekdayLabel(performance.comparison.previousRange.to)}`
+    ? comparisonDeltaLabel({
+        basis: comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: performance.comparison.previousRange,
+      })
     : undefined
   const exceptions = useMemo(() => (performance ? exceptionFeed(performance) : []), [performance])
   const trend = useMemo(() => {
@@ -161,7 +187,7 @@ export function PerformanceOperations() {
   }, [performance])
   const orderRows = useMemo(
     () =>
-      (data?.orders.orders || []).map((row) => ({
+      (orders?.orders || []).map((row) => ({
         id: row._id,
         location: locName(row.locationId),
         channel: channelLabel(row.channel),
@@ -171,7 +197,19 @@ export function PerformanceOperations() {
         voidAmt: row.voidMoney,
         discount: row.discountMoney,
       })),
-    [data],
+    [orders],
+  )
+  const ordersMeta = useMemo(
+    () =>
+      normalizePaginationMeta({
+        page: orders?.page ?? page,
+        limit: orders?.limit ?? limit,
+        total: orders?.total ?? 0,
+        totalPages: orders?.totalPages,
+        hasNext: orders?.hasNext,
+        hasPrev: orders?.hasPrev,
+      }),
+    [orders, page, limit],
   )
 
   return (
@@ -186,7 +224,7 @@ export function PerformanceOperations() {
     >
       <PerformanceTabs value="operations" />
       <QueryState
-        data={data}
+        data={performance}
         error={error}
         isLoading={isLoading}
         isRefreshing={isRefreshing}
@@ -198,7 +236,7 @@ export function PerformanceOperations() {
           </div>
         }
       >
-        {({ performance: d, orders }) => (
+        {(d) => (
           <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-3">
               <a href="#exception-orders" className="block h-full min-w-0">
@@ -303,24 +341,49 @@ export function PerformanceOperations() {
               </p>
             </Card>
 
-            <div id="exception-orders">
-              <Table
-                columns={[
-                  { key: 'location', header: 'Location' },
-                  { key: 'channel', header: 'Channel' },
-                  { key: 'date', header: 'Business date' },
-                  { key: 'orderId', header: 'Order' },
-                  { key: 'refund', header: 'Refund', align: 'right', render: (row) => money(Number(row.refund)) },
-                  { key: 'voidAmt', header: 'Void', align: 'right', render: (row) => money(Number(row.voidAmt)) },
-                  { key: 'discount', header: 'Discount', align: 'right', render: (row) => money(Number(row.discount)) },
-                ]}
-                rows={orderRows}
-                getRowKey={(row) => String(row.id)}
-                emptyMessage="No exception orders in this scope. Refunds, voids, discounts and canceled tickets appear here."
-              />
-              <p className="mt-2 text-xs text-card-text-faint">
-                Showing {orderRows.length.toLocaleString()} of {orders.total.toLocaleString()} exception orders. Payment details are not stored or shown.
-              </p>
+            <div id="exception-orders" className="relative">
+              {ordersError && !orders ? (
+                <QueryError message={ordersError} onRetry={reloadOrders} />
+              ) : (
+                <>
+                  {(ordersLoading || ordersRefreshing) && (
+                    <div className="pointer-events-none absolute inset-x-0 -top-3 h-0.5 overflow-hidden rounded-full bg-card-hover" aria-hidden>
+                      <div className="h-full w-1/3 animate-pulse bg-accent" />
+                    </div>
+                  )}
+                  <Table
+                    bodyHeight={EXCEPTION_TABLE_HEIGHT}
+                    columns={[
+                      { key: 'location', header: 'Location' },
+                      { key: 'channel', header: 'Channel' },
+                      { key: 'date', header: 'Business date' },
+                      { key: 'orderId', header: 'Order' },
+                      { key: 'refund', header: 'Refund', align: 'right', render: (row) => money(Number(row.refund)) },
+                      { key: 'voidAmt', header: 'Void', align: 'right', render: (row) => money(Number(row.voidAmt)) },
+                      { key: 'discount', header: 'Discount', align: 'right', render: (row) => money(Number(row.discount)) },
+                    ]}
+                    rows={ordersLoading && !orders ? [] : orderRows}
+                    getRowKey={(row) => String(row.id)}
+                    emptyMessage={
+                      ordersLoading && !orders
+                        ? 'Loading exception orders…'
+                        : 'No exception orders in this scope. Refunds, voids, discounts and canceled tickets appear here.'
+                    }
+                    footer={
+                      <Pagination
+                        meta={ordersMeta}
+                        onPageChange={setPage}
+                        onLimitChange={setLimit}
+                        itemLabel="exception orders"
+                        disabled={ordersLoading || ordersRefreshing}
+                      />
+                    }
+                  />
+                  <p className="mt-2 text-xs text-card-text-faint">
+                    Payment details are not stored or shown.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         )}

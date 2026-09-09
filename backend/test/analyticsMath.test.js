@@ -37,3 +37,17 @@ test('exception clusters use only refund/void/discount money already on the orde
   assert.equal(clusters.find((row)=>row.kind==='voids')?.locationName,'Simi Valley');
   assert.equal(clusterExceptionOrders([{locationId:'x',refundMoney:0,voidMoney:0,discountMoney:0}]).length,0);
 });
+
+
+test('SEO freshness ignores unavailable sync attempts and preserves real zero sessions', () => {
+  const { summarizeSeoMetrics } = require('../src/modules/analytics/math');
+  const unavailable = { source: 'ga4', status: 'UNAVAILABLE', locationId: 'a', metrics: { sessions: 0 }, freshnessAt: '2026-09-09T14:00:00Z' };
+  const empty = summarizeSeoMetrics([unavailable], []);
+  assert.equal(empty.ga4.sessions, null);
+  assert.equal(empty.freshnessAt, null);
+  const complete = { ...unavailable, status: 'COMPLETE', freshnessAt: '2026-09-08T14:00:00Z' };
+  const result = summarizeSeoMetrics([complete, unavailable], []);
+  assert.equal(result.ga4.sessions, 0);
+  assert.equal(result.ga4.status, 'COMPLETE');
+  assert.equal(result.freshnessAt, complete.freshnessAt);
+});

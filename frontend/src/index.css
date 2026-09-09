@@ -2,6 +2,25 @@
 @import './styles/theme.css';
 
 @layer base {
+  /* Shared controls and page-level controls use the same cursor defaults.
+     Keep these in the base layer so component utilities can override them. */
+  :where(button, a[href], select, summary, [role='button'], [role='link'],
+    [role='tab'], [role='switch'], [role='checkbox'], [role='radio'],
+    [role='option'], [role='menuitem'], input[type='button'],
+    input[type='submit'], input[type='reset'], input[type='checkbox'],
+    input[type='radio'], input[type='range'], input[type='color'],
+    input[type='file']):not(:disabled):not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  input[type='file']:not(:disabled)::file-selector-button {
+    cursor: pointer;
+  }
+
+  :where(button, input, select, textarea, [role]):is(:disabled, [aria-disabled='true']) {
+    cursor: not-allowed;
+  }
+
   html {
     color-scheme: dark;
   }

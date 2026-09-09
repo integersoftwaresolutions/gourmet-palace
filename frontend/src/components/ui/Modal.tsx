@@ -94,7 +94,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/65 p-4"
+      className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-canvas/65 p-4"
       onMouseDown={onScrimClick}
       role="presentation"
     >
@@ -105,7 +105,7 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         className={cn(
-          'w-full rounded-2xl border border-card-border bg-card shadow-xl',
+          'w-full cursor-auto rounded-2xl border border-card-border bg-card shadow-xl',
           sizeClasses[size],
           className,
         )}

@@ -7,6 +7,7 @@ export { Tabs, type TabsProps, type TabItem, type TabsVariant } from './Tabs'
 export { Card, type CardProps, type CardAccentBorder } from './Card'
 export { KpiCard, type KpiCardProps, type KpiDelta } from './KpiCard'
 export { Table, type TableProps, type TableColumn } from './Table'
+export { Pagination, type PaginationProps } from './Pagination'
 export { Modal, type ModalProps, type ModalSize } from './Modal'
 export {
   Sidebar,
@@ -27,3 +28,5 @@ export {
   seriesPalette,
   type ChartSeries,
 } from './charts/chartTheme'
+
+export { Drawer, type DrawerProps } from './Drawer'
