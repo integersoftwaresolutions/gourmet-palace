@@ -3,6 +3,7 @@ const Location = require('../models/Location');
 const Connection = require('../models/Connection');
 const integrations = require('../modules/integrations/integrations.service');
 const briefs = require('../modules/briefs/briefs.service');
+const alerts = require('../modules/alerts/evaluate.service');
 const { addDays } = require('../utils/dateRange');
 const { completedBusinessDateFromParts } = require('./businessDate');
 
@@ -36,6 +37,7 @@ async function runCycle(options = {}) {
   for (const org of orgs) {
     const connections = await Connection.find({ organizationId: org._id });
     const square = connections.find((c) => c.provider === 'square' && ['READY', 'PARTIAL', 'ERROR'].includes(c.status));
+    const google = connections.find((c) => c.provider === 'google' && ['READY', 'PARTIAL', 'ERROR'].includes(c.status));
     const locations = await Location.find({ organizationId: org._id, status: 'active' });
 
     for (const loc of locations) {
@@ -43,6 +45,12 @@ async function runCycle(options = {}) {
       if (square) {
         try { await integrations.squareSync({ organizationId: org._id, locationId: loc._id, businessDate, force: false }); }
         catch (e) { console.error('[worker:square]', loc.name, e.message); }
+      }
+      try { await alerts.evaluateLocation({ organizationId: org._id, locationId: loc._id, businessDate }); }
+      catch (e) { console.error('[worker:alerts]', loc.name, e.message); }
+      if (google) {
+        try { await integrations.googleSync({ organizationId: org._id, locationId: loc._id, preset: '7d' }); }
+        catch (e) { console.error('[worker:google]', loc.name, e.message); }
       }
     }
 

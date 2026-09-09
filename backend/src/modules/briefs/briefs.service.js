@@ -6,6 +6,8 @@ const User = require('../../models/User');
 const analytics = require('../analytics/analytics.service');
 const { getMailProvider } = require('../mail/mail.provider');
 const ApiError = require('../../utils/ApiError');
+const InventoryItem = require('../../models/InventoryItem');
+const { applyScope } = require('../../utils/scope');
 
 async function evidenceAuth(organizationId, locationIds, admin = false, userId = null) {
   return {
@@ -41,14 +43,28 @@ async function generate({ organizationId, businessDate, locationIds = [], scopeK
   const sourceCoverage = [];
   let sourcesComplete = true;
   for (const c of connections) {
-    if (c.provider !== 'square') continue;
+    if (!['square', 'google'].includes(c.provider)) continue;
     for (const id of scopeLocs) {
-      if (!c.mappings?.locations?.[id]?.squareLocationId) continue;
-      const job = await JobRun.findOne({ organizationId, source: 'square', locationId: id, businessDate }).sort({ updatedAt: -1 }).lean();
+      const mapped = c.provider === 'square'
+        ? c.mappings?.locations?.[id]?.squareLocationId
+        : c.mappings?.locations?.[id]?.ga4PropertyId || c.mappings?.locations?.[id]?.gscSiteUrl || c.mappings?.locations?.[id]?.gbpLocationName;
+      if (!mapped) continue;
+      const job = await JobRun.findOne({ organizationId, source: c.provider, locationId: id, businessDate }).sort({ updatedAt: -1 }).lean();
       const state = job?.status || 'UNAVAILABLE';
-      sourceCoverage.push({ provider: 'square', locationId: id, status: state });
+      sourceCoverage.push({ provider: c.provider, locationId: id, status: state });
       if (state !== 'COMPLETE') sourcesComplete = false;
     }
+  }
+
+  let inventory = [];
+  try {
+    inventory = await InventoryItem.find(applyScope(auth, { status: 'active' }, q.locationId)).select('name currentQuantity unit parLevel lastCountAt').limit(200).lean();
+  } catch { inventory = []; }
+  let forecasts = [];
+  try { forecasts = (await analytics.forecasts(auth, q)).forecasts || []; } catch { forecasts = []; }
+  let presence = null;
+  if (adminScope) {
+    try { presence = await analytics.presence(auth, q); } catch { presence = null; }
   }
 
   const dataStatus = dash.dataStatus === 'COMPLETE' && sourcesComplete ? 'COMPLETE' : 'PARTIAL';
@@ -61,6 +77,23 @@ async function generate({ organizationId, businessDate, locationIds = [], scopeK
   const financeSummary = finance ? {
     estimatedProfitAtSelectedMargin: finance.estimatedProfitAtSelectedMargin,
     selectedMargin: finance.selectedMargin,
+    approvedFoodPurchases: finance.approvedFoodPurchases,
+    foodCostPercent: finance.foodCostPercent,
+    foodCostTarget: finance.foodCostTarget,
+  } : null;
+  const inventorySummary = {
+    count: inventory.length,
+    critical: inventory.filter((item) => item.currentQuantity <= 0 || (item.parLevel > 0 && item.currentQuantity < item.parLevel)).length,
+  };
+  const forecastSummary = {
+    weekStart: forecasts[0]?.weekStart || null,
+    expectedMoney: forecasts.reduce((sum, row) => sum + Number(row.expectedMoney || 0), 0) || null,
+    status: forecasts[0]?.status || 'UNAVAILABLE',
+  };
+  const growthSummary = presence ? {
+    reviewCount: presence.reviews?.length || 0,
+    seoCount: presence.seo?.length || 0,
+    recommendations: (presence.recommendations || []).length,
   } : null;
 
   const revisionKey = {
@@ -70,6 +103,9 @@ async function generate({ organizationId, businessDate, locationIds = [], scopeK
     scores: (dash.scores || []).map((s) => [String(s.locationId?._id || s.locationId), s.score, s.rank, s.coverage]),
     priorities: priorities.map((p) => [p.ref, p.severity, p.title, p.nextAction]),
     finance: financeSummary,
+    inventory: inventorySummary,
+    forecast: forecastSummary,
+    growth: growthSummary,
     sourceCoverage,
   };
 
@@ -89,6 +125,9 @@ async function generate({ organizationId, businessDate, locationIds = [], scopeK
     weakestLocation: dash.scores?.length ? { name: dash.scores[dash.scores.length - 1].locationId?.name, score: dash.scores[dash.scores.length - 1].score } : null,
     priorities,
     finance: financeSummary,
+    inventory: inventorySummary,
+    forecast: forecastSummary,
+    growth: growthSummary,
   };
 
   const row = await Brief.create({
@@ -100,7 +139,7 @@ async function generate({ organizationId, businessDate, locationIds = [], scopeK
     isCurrent: true,
     status: dataStatus,
     publishedAt: new Date(),
-    evidence: { ...dash, finance: financeSummary, sourceCoverage, revisionKey },
+    evidence: { ...dash, finance: financeSummary, inventory: inventorySummary, forecast: forecastSummary, growth: growthSummary, sourceCoverage, revisionKey },
     content,
     priorityRefs: priorities.map((p) => p.ref),
     emailStatus: 'pending',

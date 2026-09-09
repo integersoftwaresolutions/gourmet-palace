@@ -39,6 +39,24 @@ async function getEffective(organizationId,key,locationId=null,at=new Date()){
   const exact=locationId?rows.find(r=>String(r.locationId||'')===String(locationId)):null;
   const row=exact||rows.find(r=>!r.locationId); return row?row.value:DEFAULTS[key];
 }
+/** Resolve from an already-loaded setting history (ascending effectiveFrom). Avoids per-row Mongo lookups. */
+function historyEffective(history,key,locationId,at,fallback){
+  const ts=at instanceof Date?at:new Date(at);
+  const locId=locationId?String(locationId):'';
+  let locVal,orgVal;
+  for(const row of history||[]){
+    if(row.key!==key)continue;
+    const from=row.effectiveFrom instanceof Date?row.effectiveFrom:new Date(row.effectiveFrom);
+    if(Number.isNaN(from.getTime())||from>ts)continue;
+    const rowLoc=row.locationId?String(row.locationId):'';
+    if(rowLoc&&locId&&rowLoc===locId)locVal=row.value;
+    else if(!rowLoc)orgVal=row.value;
+  }
+  return locVal??orgVal??fallback;
+}
+async function listHistory(organizationId,keys){
+  return BusinessSetting.find({organizationId,key:{$in:keys}}).sort({effectiveFrom:1}).lean();
+}
 async function list(organizationId){const rows=await BusinessSetting.find({organizationId}).sort({effectiveFrom:-1}).lean(); return {defaults:DEFAULTS,history:rows};}
 async function setValue({organizationId,locationId=null,key,value,effectiveFrom,actor,reqMeta={}}){
   if(!(key in DEFAULTS)) throw new ApiError(400,'Unsupported setting key');validateValue(key,value);
@@ -47,4 +65,4 @@ async function setValue({organizationId,locationId=null,key,value,effectiveFrom,
   await audit.record({type:'setting.update',result:'success',actorUserId:actor.id,organizationId,correlationId:reqMeta.correlationId,ip:reqMeta.ip,userAgent:reqMeta.userAgent,meta:{key,locationId,value,effectiveFrom:row.effectiveFrom}});
   return row.toJSON();
 }
-module.exports={DEFAULTS,getEffective,list,setValue,validateValue};
+module.exports={DEFAULTS,getEffective,historyEffective,listHistory,list,setValue,validateValue};

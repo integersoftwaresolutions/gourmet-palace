@@ -11,6 +11,7 @@ export type CommandCenterMetricProps = {
   invert?: boolean
   meta?: ReactNode
   className?: string
+  hideTrend?: boolean
 }
 
 export function CommandCenterMetric({
@@ -21,6 +22,7 @@ export function CommandCenterMetric({
   invert = false,
   meta,
   className,
+  hideTrend = false,
 }: CommandCenterMetricProps) {
   const unavailable = value === 'Unavailable'
 
@@ -40,9 +42,11 @@ export function CommandCenterMetric({
         {value}
       </p>
 
-      <div className="mt-2 flex min-w-0 items-center gap-2">
-        <TrendBadge value={delta ?? null} label={deltaLabel} invert={invert} />
-      </div>
+      {!hideTrend && (
+        <div className="mt-2 flex min-w-0 items-center gap-2">
+          <TrendBadge value={delta ?? null} label={deltaLabel} invert={invert} />
+        </div>
+      )}
 
       {meta != null && (
         <p className="mt-2 truncate text-[11px] text-card-text-faint">{meta}</p>

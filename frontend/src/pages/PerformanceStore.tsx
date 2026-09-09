@@ -4,6 +4,7 @@ import { PerformanceTabs } from '../components/layout/SectionTabs'
 import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
 import { RankingRow } from '../components/command-center/RankingRow'
 import { TrendBadge } from '../components/command-center/TrendBadge'
+import { QueryState, PerformanceSkeleton } from '../components/query'
 import {
   BarChart,
   Card,
@@ -12,9 +13,10 @@ import {
   Tabs,
 } from '../components/ui'
 import { chartColors } from '../components/ui/charts/chartTheme'
-import { analyticsApi, type PerformanceData } from '../lib/api'
+import { analyticsApi } from '../lib/api'
+import { useAsyncResource } from '../hooks/useAsyncResource'
 import { freshnessTime, money } from '../lib/format'
-import { comparisonWeekdayLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { comparisonDeltaLabel, formatComparisonRangeLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
 
 const channelLabels: Record<string, string> = {
@@ -43,17 +45,13 @@ function locName(id: { _id: string; name: string } | string | undefined): string
 
 export function PerformanceStore() {
   const { query, locations, selectedLocationId, comparisonMode } = useAppState()
-  const [data, setData] = useState<PerformanceData | null>(null)
-  const [error, setError] = useState('')
+  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    () => analyticsApi.performance(query).then((response) => response.data),
+    [query],
+    { fallbackError: 'Unable to load performance' },
+  )
   const [view, setView] = useState<StoreView>('normal')
   const [itemView, setItemView] = useState<ItemView>('top')
-
-  useEffect(() => {
-    setError('')
-    analyticsApi.performance(query)
-      .then((response) => setData(response.data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Unable to load performance'))
-  }, [query])
 
   const selectedLocation = locations.find((location) => location.id === selectedLocationId)
   const storeName = selectedLocationId === 'all' ? 'All locations' : selectedLocation?.name || 'Location'
@@ -62,14 +60,14 @@ export function PerformanceStore() {
     ? `Fresh · ${freshnessTime(data.freshnessAt)} PT`
     : 'Source freshness unavailable'
   const vsLabel = data
-    ? view === 'peers'
-      ? 'VS PEERS'
-      : comparisonMode === 'prior-year'
-        ? 'VS LY'
-        : `VS ${comparisonWeekdayLabel(data.comparison.previousRange.to)}`
+    ? comparisonDeltaLabel({
+        basis: view === 'peers' ? 'peers' : comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: data.comparison.previousRange,
+      })
     : undefined
   const deltas = view === 'peers' ? data?.peerComparison : data?.comparison
   const peerToggleDisabled = selectedLocationId === 'all' || !data?.peerComparison
+  const periodTabLabel = comparisonMode === 'prior-year' ? 'vs. prior year' : 'vs. prior period'
   useEffect(() => {
     if (peerToggleDisabled) setView('normal')
   }, [peerToggleDisabled])
@@ -114,13 +112,16 @@ export function PerformanceStore() {
       activeNav="performance"
     >
       <PerformanceTabs value="stores" />
-      {error && (
-        <Card className="mt-5" accentBorder="brand">
-          <p className="text-danger-subtle-text">{error}</p>
-        </Card>
-      )}
-      {data && (
-        <div className="mt-5 space-y-5">
+      <QueryState
+        data={data}
+        error={error}
+        isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        onRetry={reload}
+        loader={<PerformanceSkeleton />}
+      >
+        {(data) => (
+        <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               {score && (
@@ -137,16 +138,27 @@ export function PerformanceStore() {
               value={peerToggleDisabled ? 'normal' : view}
               onChange={(id) => setView(id as StoreView)}
               items={[
-                { id: 'normal', label: 'vs. my normal' },
+                { id: 'normal', label: periodTabLabel },
                 { id: 'peers', label: 'vs. other locations', disabled: peerToggleDisabled },
               ]}
             />
           </div>
 
-          {view === 'peers' && data.peerComparison && (
+          {view === 'peers' && data.peerComparison ? (
             <p className="text-xs text-card-text-muted">
               KPI change is versus the average of {data.peerComparison.peerCount} other authorized location
-              {data.peerComparison.peerCount === 1 ? '' : 's'} in the same period.
+              {data.peerComparison.peerCount === 1 ? '' : 's'} in the <span className="font-medium">same selected dates</span>
+              {' '}({formatComparisonRangeLabel(data.range)}).
+            </p>
+          ) : (
+            <p className="text-xs text-card-text-muted">
+              KPI change is versus the header{' '}
+              <span className="font-medium">{comparisonMode === 'prior-year' ? 'Prior year' : 'Prior period'}</span>
+              {data.comparison.previousRange
+                ? ` (${formatComparisonRangeLabel(data.comparison.previousRange)})`
+                : ''}
+              {comparisonMode === 'previous' ? ' — the equal-length window immediately before the selected dates' : ' — the same dates last year'}
+              . Switch the header control to change this basis.
             </p>
           )}
 
@@ -309,7 +321,8 @@ export function PerformanceStore() {
             </p>
           </Card>
         </div>
-      )}
+        )}
+      </QueryState>
     </AppShell>
   )
 }

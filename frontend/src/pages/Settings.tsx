@@ -1,2 +1,119 @@
-import {useEffect,useState} from 'react';import {FiSettings,FiX} from 'react-icons/fi';import {Button,Toggle} from '../components/ui';import {useAuth} from '../context/useAuth';import {useAppState} from '../context/useAppState';import {authApi} from '../lib/api';
-type Props={open:boolean;onClose:()=>void};export function Settings({open,onClose}:Props){const {user,signout,refreshUser}=useAuth();const {theme,setTheme}=useAppState();const [email,setEmail]=useState(true),[inApp,setInApp]=useState(true),[alerts,setAlerts]=useState(true),[brief,setBrief]=useState(true),[saving,setSaving]=useState(false);useEffect(()=>{if(user?.notificationPreferences){setEmail(user.notificationPreferences.email!==false);setInApp(user.notificationPreferences.inApp!==false);setAlerts(user.notificationPreferences.alerts!==false);setBrief(user.notificationPreferences.brief!==false)}},[user]);if(!open)return null;const save=async()=>{setSaving(true);try{await authApi.updatePreferences({email,inApp,alerts,brief});await refreshUser()}finally{setSaving(false)}};return <div className="fixed inset-0 z-[60]"><button className="absolute inset-0 bg-canvas/65" aria-label="Close settings" onClick={onClose}/><aside className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-card-border bg-card shadow-xl"><div className="flex items-center justify-between border-b border-card-border px-5 py-4"><div className="flex items-center gap-2"><FiSettings/><h2 className="text-sm font-semibold tracking-widest text-card-text uppercase">Settings</h2></div><button onClick={onClose} className="p-2 text-card-text-muted"><FiX/></button></div><div className="flex-1 space-y-8 overflow-y-auto p-5"><section><h3 className="text-lg font-semibold text-card-text">{user?.name}</h3><p className="text-sm text-card-text-muted">{user?.email} · {user?.role}</p></section><section className="space-y-4"><h3 className="text-xs font-semibold tracking-widest text-card-text-faint uppercase">Notifications</h3><Toggle label="Email notifications" checked={email} onChange={setEmail}/><Toggle label="In-app notifications" checked={inApp} onChange={setInApp}/><Toggle label="Critical/business alerts" checked={alerts} onChange={setAlerts}/><Toggle label="5:00 AM Pacific Morning Brief" checked={brief} onChange={setBrief}/><Button size="sm" onClick={()=>void save()} disabled={saving}>{saving?'Saving…':'Save notification preferences'}</Button></section><section className="space-y-3"><h3 className="text-xs font-semibold tracking-widest text-card-text-faint uppercase">Display</h3><div className="flex gap-2"><Button size="sm" variant={theme==='dark'?'fill':'outline'} onClick={()=>setTheme('dark')}>Dark</Button><Button size="sm" variant={theme==='light'?'fill':'outline'} onClick={()=>setTheme('light')}>Light</Button></div></section></div><div className="border-t border-card-border p-5"><Button fullWidth variant="outline" onClick={()=>{onClose();void signout()}}>Sign out</Button></div></aside></div>}
+import { useEffect, useState } from "react";
+import { FiSettings, FiX } from "react-icons/fi";
+import { Button, Drawer, Toggle } from "../components/ui";
+import { useAuth } from "../context/useAuth";
+import { useAppState } from "../context/useAppState";
+import { authApi } from "../lib/api";
+type Props = { open: boolean; onClose: () => void };
+export function Settings({ open, onClose }: Props) {
+  const { user, signout, refreshUser } = useAuth();
+  const { theme, setTheme } = useAppState();
+  const [email, setEmail] = useState(true),
+    [inApp, setInApp] = useState(true),
+    [alerts, setAlerts] = useState(true),
+    [brief, setBrief] = useState(true),
+    [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (user?.notificationPreferences) {
+      setEmail(user.notificationPreferences.email !== false);
+      setInApp(user.notificationPreferences.inApp !== false);
+      setAlerts(user.notificationPreferences.alerts !== false);
+      setBrief(user.notificationPreferences.brief !== false);
+    }
+  }, [user]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await authApi.updatePreferences({ email, inApp, alerts, brief });
+      await refreshUser();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Drawer open={open} onClose={onClose} labelledBy="settings-title">
+        <div className="flex items-center justify-between border-b border-card-border px-5 py-4">
+          <div className="flex items-center gap-2">
+            <FiSettings />
+            <h2 id="settings-title" className="text-sm font-semibold tracking-widest text-card-text uppercase">
+              Settings
+            </h2>
+          </div>
+          <button type="button" aria-label="Close settings" onClick={onClose} className="p-2 text-card-text-muted">
+            <FiX />
+          </button>
+        </div>
+        <div className="flex-1 space-y-8 overflow-y-auto p-5">
+          <section>
+            <h3 className="text-lg font-semibold text-card-text">
+              {user?.name}
+            </h3>
+            <p className="text-sm text-card-text-muted">
+              {user?.email} · {user?.role}
+            </p>
+          </section>
+          <section className="space-y-4">
+            <h3 className="text-xs font-semibold tracking-widest text-card-text-faint uppercase">
+              Notifications
+            </h3>
+            <Toggle
+              label="Email notifications"
+              checked={email}
+              onChange={setEmail}
+            />
+            <Toggle
+              label="In-app notifications"
+              checked={inApp}
+              onChange={setInApp}
+            />
+            <Toggle
+              label="Critical/business alerts"
+              checked={alerts}
+              onChange={setAlerts}
+            />
+            <Toggle
+              label="5:00 AM Pacific Morning Brief"
+              checked={brief}
+              onChange={setBrief}
+            />
+            <Button size="sm" onClick={() => void save()} disabled={saving}>
+              {saving ? "Saving…" : "Save notification preferences"}
+            </Button>
+          </section>
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold tracking-widest text-card-text-faint uppercase">
+              Display
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={theme === "dark" ? "fill" : "outline"}
+                onClick={() => setTheme("dark")}
+              >
+                Dark
+              </Button>
+              <Button
+                size="sm"
+                variant={theme === "light" ? "fill" : "outline"}
+                onClick={() => setTheme("light")}
+              >
+                Light
+              </Button>
+            </div>
+          </section>
+        </div>
+        <div className="border-t border-card-border p-5">
+          <Button
+            fullWidth
+            variant="outline"
+            onClick={() => {
+              onClose();
+              void signout();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
+    </Drawer>
+  );
+}

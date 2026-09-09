@@ -15,6 +15,10 @@ r.post('/rerun',asyncHandler(async(req,res)=>{
   let result;
   if(source==='square'){
     result=await integrations.squareSync({organizationId:req.auth.organizationId,locationId,businessDate,force:true});
+  }else if(source==='google'){
+    result=await integrations.googleSync({organizationId:req.auth.organizationId,locationId,from:businessDate,to:businessDate});
+  }else if(source==='forecast'){
+    result=await analytics.rebuildForecast({organizationId:req.auth.organizationId,locationId,businessDate});
   }else if(source==='calculate'){
     await analytics.rebuildDaily({organizationId:req.auth.organizationId,locationId,businessDate});
     result=await analytics.rebuildBaselinesAndScore({organizationId:req.auth.organizationId,locationId,businessDate});

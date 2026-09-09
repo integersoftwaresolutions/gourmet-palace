@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { FiArrowRight, FiX } from 'react-icons/fi'
+import { useNavigate } from 'react-router-dom'
+import { FiArrowRight, FiThumbsDown, FiThumbsUp, FiX } from 'react-icons/fi'
 import { useAuth } from '../context/useAuth'
-import { Pill } from '../components/ui'
+import { useAppState } from '../context/useAppState'
+import { Drawer, Pill } from '../components/ui'
 import { cn } from '../lib/cn'
+import { chatApi } from '../lib/api'
+import { asyncMessage } from '../lib/asyncError'
+import {
+  applyEvidenceScope,
+  clarifySuggestions,
+  evidenceLinks,
+  evidencePeriodLabel,
+  type EvidenceItem,
+  type EvidenceLink,
+} from '../lib/evidenceLinks'
 
 type AskAIProps = {
   open: boolean
@@ -13,74 +25,82 @@ type ChatMessage = {
   id: string
   role: 'assistant' | 'user'
   text: string
-  pills?: string[]
-  sources?: string
+  toolFamily?: string | null
+  dataStatus?: string | null
+  evidence?: EvidenceItem[]
+  feedback?: '' | 'up' | 'down'
+  typing?: boolean
 }
 
-const starterMessages: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    text: 'Good morning, Jimmy. Ask me anything about your locations, sales, costs, reviews, invoices or forecast. I answer only from your data — and I’ll tell you when I don’t have enough of it.',
-  },
-  {
-    id: '2',
-    role: 'user',
-    text: 'Why were sales down at Woodland Hills yesterday?',
-  },
-  {
-    id: '3',
-    role: 'assistant',
-    text: 'Woodland Hills net sales were $14,180 vs a $17,420 comparable-Tuesday baseline (−18.6%). The gap is concentrated in delivery 6:30–8:00 PM, where refunds spiked to 9 tickets and two cold-food reviews arrived the same window. Dine-in held roughly flat.',
-    pills: ['Net $14,180', '−18.6% vs baseline', '9 refunds'],
-    sources:
-      'Sources: POS orders (Tue Jul 29) · GBP reviews · refund log · baseline v8',
-  },
-  {
-    id: '4',
-    role: 'user',
-    text: 'What should I focus on today?',
-  },
-  {
-    id: '5',
-    role: 'assistant',
-    text: 'Three priorities:\n1. Delivery handoff at Woodland Hills — refund spike and cold-food reviews align.\n2. Sysco chicken breast pricing (+18% / 3 mo) — est. $340/mo overpay.\n3. Approve 2 pending review reply drafts before lunch traffic.',
-    sources:
-      'Sources: alerts · invoices · review queue · data quality status',
-  },
-]
+const SESSION_KEY = 'gp.askAi.sessionId'
 
-function cannedReply(question: string): ChatMessage {
-  return {
-    id: String(Date.now() + 1),
-    role: 'assistant',
-    text: `I can only answer from your controlled restaurant data. For “${question.slice(0, 80)}${question.length > 80 ? '…' : ''}”, the strongest next step is to check Overview for the morning brief, Alerts for open exceptions, and Performance → Stores for location detail. I don’t invent numbers when coverage is thin.`,
-    sources: 'Sources: dashboard scope · read-only tools · no write actions',
-  }
+function welcomeText(name: string | undefined) {
+  const first = name?.trim().split(/\s+/)[0] || 'there'
+  return `Good morning, ${first}. Ask me anything about your authorized locations, sales, costs, reviews, invoices or forecast. I answer only from your data.`
 }
 
 export function AskAI({ open, onClose }: AskAIProps) {
   const { user } = useAuth()
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  const {
+    query,
+    setDatePreset,
+    setCustomFrom,
+    setCustomTo,
+    setSelectedLocationId,
+  } = useAppState()
+  const navigate = useNavigate()
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const [messages, setMessages] = useState<ChatMessage[]>(starterMessages)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const [sessionId, setSessionId] = useState<string | undefined>(() => sessionStorage.getItem(SESSION_KEY) || undefined)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [historyLoaded, setHistoryLoaded] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current()
+    let cancelled = false
+    const stored = sessionStorage.getItem(SESSION_KEY) || undefined
+    setHistoryLoaded(false)
+    if (!stored) {
+      setMessages([{ id: 'welcome', role: 'assistant', text: welcomeText(user?.name) }])
+      setHistoryLoaded(true)
+      return () => { cancelled = true }
     }
-    document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    chatApi.history(stored)
+      .then((res) => {
+        if (cancelled) return
+        const rows = res.data.messages || []
+        if (!rows.length) {
+          setMessages([{ id: 'welcome', role: 'assistant', text: welcomeText(user?.name) }])
+          return
+        }
+        setSessionId(stored)
+        setMessages(rows.map((row) => ({
+          id: String(row._id),
+          role: row.role === 'user' ? 'user' : 'assistant',
+          text: String(row.content || ''),
+          toolFamily: row.toolFamily ? String(row.toolFamily) : null,
+          evidence: Array.isArray(row.evidence) ? row.evidence as EvidenceItem[] : [],
+          feedback: row.feedback === 'up' || row.feedback === 'down' ? row.feedback : '',
+        })))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMessages([{ id: 'welcome', role: 'assistant', text: welcomeText(user?.name) }])
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoaded(true)
+      })
+    return () => { cancelled = true }
+  }, [open, user?.name])
+
+  useEffect(() => {
+    if (!open) return
     const t = window.setTimeout(() => inputRef.current?.focus(), 50)
     return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
       window.clearTimeout(t)
     }
   }, [open])
@@ -91,52 +111,67 @@ export function AskAI({ open, onClose }: AskAIProps) {
       top: listRef.current.scrollHeight,
       behavior: 'smooth',
     })
-  }, [messages, open])
+  }, [messages, open, busy])
 
-  if (!open) return null
+  const firstName = (user?.name || 'there').split(/\s+/)[0] || 'there'
 
-  const firstName = (user?.name || 'Jimmy').split(' ')[0]
+  const openEvidence = (link: EvidenceLink) => {
+    applyEvidenceScope(link, { setDatePreset, setCustomFrom, setCustomTo, setSelectedLocationId })
+    onClose()
+    navigate(link.path)
+  }
 
-  const onSend = (e?: FormEvent) => {
+  const onSend = async (e?: FormEvent) => {
     e?.preventDefault()
     const text = draft.trim()
-    if (!text) return
-
-    const userMsg: ChatMessage = {
-      id: String(Date.now()),
-      role: 'user',
-      text,
-    }
+    if (!text || busy) return
     setDraft('')
-    setMessages((prev) => [...prev, userMsg])
+    setError('')
+    setBusy(true)
+    setMessages((prev) => [
+      ...prev.filter((m) => m.id !== 'welcome' || prev.some((x) => x.role === 'user')),
+      { id: `u-${Date.now()}`, role: 'user', text },
+      { id: 'typing', role: 'assistant', text: '', typing: true },
+    ])
+    try {
+      const res = await chatApi.ask({ question: text, sessionId, scope: query })
+      sessionStorage.setItem(SESSION_KEY, res.data.sessionId)
+      setSessionId(res.data.sessionId)
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== 'typing'),
+        {
+          id: res.data.message._id,
+          role: 'assistant',
+          text: res.data.message.content,
+          toolFamily: res.data.toolFamily,
+          dataStatus: res.data.dataStatus,
+          evidence: (res.data.evidence || []) as EvidenceItem[],
+          feedback: '',
+        },
+      ])
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== 'typing'))
+      setError(asyncMessage(err, 'Unable to answer from authorized data'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
-    window.setTimeout(() => {
-      setMessages((prev) => [...prev, cannedReply(text)])
-    }, 350)
+  const onFeedback = async (id: string, value: 'up' | 'down' | '') => {
+    try {
+      await chatApi.feedback(id, value)
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, feedback: value } : m)))
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-[60]" role="presentation">
-      <button
-        type="button"
-        className="absolute inset-0 bg-canvas/65"
-        aria-label="Close Ask AI"
-        onClick={onClose}
-      />
-
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ask-ai-title"
-        className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-card-border bg-card shadow-xl"
-      >
+    <Drawer open={open} onClose={onClose} labelledBy="ask-ai-title">
         <div className="flex items-start justify-between gap-3 border-b border-card-border px-5 py-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="size-2 rotate-45 bg-accent"
-                aria-hidden
-              />
+              <span className="size-2 rotate-45 bg-accent" aria-hidden />
               <h2
                 id="ask-ai-title"
                 className="text-sm font-semibold tracking-widest text-card-text uppercase"
@@ -164,56 +199,134 @@ export function AskAI({ open, onClose }: AskAIProps) {
         <div
           ref={listRef}
           className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
+          aria-busy={busy || !historyLoaded}
         >
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                'flex',
-                msg.role === 'user' ? 'justify-end' : 'justify-start',
-              )}
-            >
+          {messages.map((msg) => {
+            const links = msg.typing ? [] : evidenceLinks(msg.evidence, msg.toolFamily)
+            const period = msg.typing ? null : evidencePeriodLabel(msg.evidence)
+            const suggestions = msg.typing || msg.dataStatus !== 'CLARIFY'
+              ? []
+              : clarifySuggestions(msg.evidence)
+            return (
               <div
+                key={msg.id}
                 className={cn(
-                  'max-w-[92%] rounded-xl px-3.5 py-3 text-sm leading-relaxed',
-                  msg.role === 'user'
-                    ? 'bg-brand text-brand-text'
-                    : 'bg-card-hover text-card-text',
+                  'flex',
+                  msg.role === 'user' ? 'justify-end' : 'justify-start',
                 )}
               >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
-                {msg.pills && msg.pills.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {msg.pills.map((pill) => (
-                      <Pill key={pill} tone="accent" variant="outline" size="sm">
-                        {pill}
-                      </Pill>
-                    ))}
-                  </div>
-                )}
-                {msg.sources && (
-                  <p className="mt-2 text-[11px] text-card-text-faint">
-                    {msg.sources}
-                  </p>
-                )}
+                <div
+                  className={cn(
+                    'max-w-[92%] rounded-xl px-3.5 py-3 text-sm leading-relaxed',
+                    msg.role === 'user'
+                      ? 'bg-brand text-brand-text'
+                      : msg.dataStatus === 'CLARIFY'
+                        ? 'border border-warning/30 bg-card-hover text-card-text'
+                        : 'bg-card-hover text-card-text',
+                  )}
+                >
+                  {msg.typing ? (
+                    <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Thinking">
+                      <span className="size-1.5 animate-pulse rounded-full bg-card-text-faint" />
+                      <span className="size-1.5 animate-pulse rounded-full bg-card-text-faint [animation-delay:150ms]" />
+                      <span className="size-1.5 animate-pulse rounded-full bg-card-text-faint [animation-delay:300ms]" />
+                    </div>
+                  ) : (
+                    <>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      {period && (
+                        <p className="mt-2 text-[11px] text-card-text-faint">Resolved period · {period}</p>
+                      )}
+                      {suggestions.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {suggestions.map((tip) => (
+                            <button
+                              key={tip}
+                              type="button"
+                              onClick={() => {
+                                setDraft((prev) => {
+                                  const base = prev.trim()
+                                  if (!base) return tip
+                                  if (/\b(yesterday|today|tomorrow|last week|previous week|this week|last month|this month)\b/i.test(base)) {
+                                    return base
+                                  }
+                                  return `${base} (${tip})`
+                                })
+                                inputRef.current?.focus()
+                              }}
+                              className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+                            >
+                              <Pill tone="warning" variant="outline" size="sm">
+                                Try “{tip}”
+                              </Pill>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {links.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {links.map((link) => (
+                            <button
+                              key={link.key}
+                              type="button"
+                              onClick={() => openEvidence(link)}
+                              className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
+                            >
+                              <Pill tone="accent" variant="outline" size="sm">
+                                {link.label}
+                              </Pill>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {msg.role === 'assistant' && msg.id !== 'welcome' && !msg.typing && (
+                        <div className="mt-3 flex items-center gap-2">
+                          {msg.toolFamily && (
+                            <span className="text-[11px] text-card-text-faint">{msg.toolFamily}{msg.dataStatus ? ` · ${msg.dataStatus}` : ''}</span>
+                          )}
+                          <div className="ml-auto flex gap-1">
+                            <button
+                              type="button"
+                              aria-label="Helpful"
+                              className={cn('rounded p-1 text-card-text-faint hover:text-card-text', msg.feedback === 'up' && 'text-accent')}
+                              onClick={() => void onFeedback(msg.id, msg.feedback === 'up' ? '' : 'up')}
+                            >
+                              <FiThumbsUp className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Not helpful"
+                              className={cn('rounded p-1 text-card-text-faint hover:text-card-text', msg.feedback === 'down' && 'text-danger')}
+                              onClick={() => void onFeedback(msg.id, msg.feedback === 'down' ? '' : 'down')}
+                            >
+                              <FiThumbsDown className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="border-t border-card-border px-4 py-4">
-          <form onSubmit={onSend} className="flex items-center gap-2">
+          {error && <p className="mb-2 text-xs text-danger-subtle-text">{error}</p>}
+          <form onSubmit={(e) => void onSend(e)} className="flex items-center gap-2">
             <input
               ref={inputRef}
               type="text"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              disabled={busy}
               placeholder="Ask about sales, costs, reviews, invoices..."
-              className="h-11 min-w-0 flex-1 rounded-full border border-card-border bg-card-subtle px-4 text-sm text-card-text outline-none placeholder:text-card-text-faint focus:border-accent-border focus:outline-2 focus:outline-offset-0 focus:outline-accent-ring"
+              className="h-11 min-w-0 flex-1 rounded-full border border-card-border bg-card-subtle px-4 text-sm text-card-text outline-none placeholder:text-card-text-faint focus:border-accent-border focus:outline-2 focus:outline-offset-0 focus:outline-accent-ring disabled:opacity-60"
             />
             <button
               type="submit"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || busy}
               className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-text transition-colors hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-40"
               aria-label="Send"
             >
@@ -225,7 +338,6 @@ export function AskAI({ open, onClose }: AskAIProps) {
             actions from chat
           </p>
         </div>
-      </aside>
-    </div>
+    </Drawer>
   )
 }

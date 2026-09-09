@@ -16,6 +16,12 @@ export type TableProps<T extends Record<string, unknown>> = {
   emptyMessage?: string
   className?: string
   getRowKey?: (row: T, index: number) => string
+  /**
+   * Fixed scroll viewport for the table body (e.g. "26rem").
+   * Header stays sticky while rows scroll inside.
+   */
+  bodyHeight?: string
+  footer?: ReactNode
 }
 
 const alignClass = {
@@ -30,13 +36,18 @@ export function Table<T extends Record<string, unknown>>({
   emptyMessage = 'No data',
   className,
   getRowKey,
+  bodyHeight,
+  footer,
 }: TableProps<T>) {
   return (
     <Card padding="none" className={cn('overflow-hidden', className)}>
-      <div className="overflow-x-auto">
+      <div
+        className={cn('overflow-x-auto', bodyHeight && 'overflow-y-auto')}
+        style={bodyHeight ? { height: bodyHeight } : undefined}
+      >
         <table className="w-full min-w-[480px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-card-border">
+          <thead className={cn(bodyHeight && 'sticky top-0 z-10')}>
+            <tr className="border-b border-card-border bg-card">
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -90,6 +101,7 @@ export function Table<T extends Record<string, unknown>>({
           </tbody>
         </table>
       </div>
+      {footer}
     </Card>
   )
 }

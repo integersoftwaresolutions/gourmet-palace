@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { FiAlertCircle, FiBarChart2, FiBookOpen, FiFileText, FiGrid, FiMapPin, FiSearch, FiSettings, FiShield } from 'react-icons/fi'
 import { useAuth } from '../../context/useAuth'
 import { useAppState } from '../../context/useAppState'
-import { openAlertsCount } from '../../data/alerts'
+import { alertsApi } from '../../lib/api'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { Button, Select, Sidebar } from '../ui'
 import { AskAI } from '../../pages/AskAI'
 import { Settings } from '../../pages/Settings'
@@ -43,6 +44,12 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
   const navigate = useNavigate()
   const [askOpen, setAskOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const { data: loadedAlertCount } = useAsyncResource(
+    () => alertsApi.list({ status: 'OPEN' }).then((res) => res.data.alerts.length),
+    [selectedLocationId, datePreset],
+    { fallbackError: 'Unable to load alerts' },
+  )
+  const openAlertsCount = loadedAlertCount ?? 0
 
   const items = [
     { id: 'overview', label: 'Command Center', icon: <FiGrid />, active: activeNav === 'overview' },
@@ -86,14 +93,14 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
   return (
     <div className="flex min-h-screen bg-surface">
       <Sidebar
-        className="sticky top-0 h-screen"
+        className="sticky top-0 h-screen print:hidden"
         brand={{ title: 'Gourmet Palace', subtitle: 'Command Center' }}
         items={items}
         onNavigate={go}
         footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role }}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-6 py-3 md:px-8">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-6 py-3 md:px-8 print:hidden">
           <div className="flex flex-wrap items-center gap-2">
             {headerLead}
             <div className="w-52">

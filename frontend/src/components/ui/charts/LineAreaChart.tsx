@@ -19,7 +19,7 @@ import {
 } from './chartTheme'
 
 export type LineAreaChartProps = {
-  data: Record<string, string | number>[]
+  data: Record<string, string | number | null>[]
   categoryKey: string
   series: ChartSeries[]
   /** Optional low/high band keys for a range fill under the primary series */
@@ -117,6 +117,7 @@ export function LineAreaChart({
                 fill={`url(#${rangeId})`}
                 name="High"
                 legendType="none"
+                connectNulls={false}
               />
               <Area
                 type="monotone"
@@ -125,6 +126,7 @@ export function LineAreaChart({
                 fill="var(--card)"
                 name="Low"
                 legendType="none"
+                connectNulls={false}
               />
             </>
           )}
@@ -142,6 +144,7 @@ export function LineAreaChart({
                 fill={`url(#${gradientIds[i]})`}
                 dot={false}
                 activeDot={{ r: 5 }}
+                connectNulls={false}
               />
             )
           })}
@@ -155,6 +158,7 @@ export function LineAreaChart({
               strokeWidth={2.5}
               dot={false}
               legendType="none"
+              connectNulls={false}
             />
           )}
         </RechartsAreaChart>

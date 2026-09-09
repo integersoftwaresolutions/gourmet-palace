@@ -1,207 +1,393 @@
-import { useNavigate } from 'react-router-dom'
-import {
-  Card,
-  KpiCard,
-  Pill,
-  Tabs,
-} from '../components/ui'
+import { useMemo } from 'react'
 import { AppShell } from '../components/layout/AppShell'
-import { cn } from '../lib/cn'
+import { PerformanceTabs } from '../components/layout/SectionTabs'
+import { AlertRow } from '../components/command-center/AlertRow'
+import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
+import { QueryError, QueryState, DualPanelSkeleton, KpiRowSkeleton } from '../components/query'
+import { Card, Pagination, Pill, Table } from '../components/ui'
+import { analyticsApi, type ExceptionCluster, type OrderRecord, type PerformanceData } from '../lib/api'
+import { useAsyncResource } from '../hooks/useAsyncResource'
+import { usePagination } from '../hooks/usePagination'
+import { money } from '../lib/format'
+import { normalizePaginationMeta, toPaginationQuery } from '../lib/pagination'
+import { comparisonDeltaLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { useAppState } from '../context/useAppState'
 
-const trends = [
-  {
-    title: 'Refunds',
-    detail: 'Woodland Hills dinner window',
-    badge: '42% above baseline',
-    tone: 'danger' as const,
-  },
-  {
-    title: 'Voids',
-    detail: 'Company-wide',
-    badge: '6% below normal',
-    tone: 'success' as const,
-  },
-  {
-    title: 'Discounts',
-    detail: 'Lunch promotion',
-    badge: '2% above normal',
-    tone: 'warning' as const,
-  },
-]
+const EXCEPTION_TABLE_HEIGHT = '26rem'
 
-const exceptions = [
-  {
-    title: '9 refunds · delivery · 6:30–8:00 PM',
-    detail: 'Woodland Hills',
-    badge: 'Critical',
-    tone: 'danger' as const,
-  },
-  {
-    title: 'Guest count unavailable',
-    detail: 'Simi Valley',
-    badge: 'Data quality',
-    tone: 'warning' as const,
-  },
-  {
-    title: '2 comped meals · approval on file',
-    detail: 'Sherman Oaks',
-    badge: 'Info',
-    tone: 'info' as const,
-  },
-]
+const channelLabels: Record<string, string> = {
+  dine_in: 'Dine-in',
+  takeout: 'Takeout',
+  delivery: 'Delivery',
+  third_party: 'Third-party',
+  direct_online: 'Online-direct',
+  unknown: 'Unknown channel',
+}
 
-const toneDot = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  info: 'bg-info',
-  success: 'bg-success',
-} as const
+function channelLabel(channel: string) {
+  return channelLabels[channel] || channel.replaceAll('_', ' ')
+}
+
+function locName(id: OrderRecord['locationId']) {
+  return typeof id === 'object' && id ? id.name : 'Location'
+}
+
+function majority(
+  clusters: ExceptionCluster[],
+  kind: ExceptionCluster['kind'],
+  field: 'locationName' | 'channel' | 'daypart',
+) {
+  const rows = clusters.filter((row) => row.kind === kind)
+  const total = rows.reduce((sum, row) => sum + row.money, 0)
+  if (!total) return null
+  const by = new Map<string, number>()
+  for (const row of rows) {
+    const raw = row[field]
+    if (!raw || raw === 'unknown') continue
+    by.set(raw, (by.get(raw) || 0) + row.money)
+  }
+  if (!by.size) return null
+  const [label, amount] = [...by.entries()].sort((a, b) => b[1] - a[1])[0]
+  return amount / total >= 0.5 ? label : null
+}
+
+function whereLine(clusters: ExceptionCluster[], kind: ExceptionCluster['kind'], locationCount: number) {
+  const named = locationCount === 1
+    ? clusters.find((row) => row.kind === kind)?.locationName || clusters[0]?.locationName
+    : majority(clusters, kind, 'locationName')
+  const channel = majority(clusters, kind, 'channel')
+  const daypart = majority(clusters, kind, 'daypart')
+  return [named || 'All locations in scope', channel ? channelLabel(channel) : null, daypart].filter(Boolean).join(' · ')
+}
+
+function clusterLine(cluster: ExceptionCluster) {
+  const windowLabel = cluster.daypart || 'time not attributed'
+  return `${cluster.orderCount} ${cluster.kind} · ${channelLabel(cluster.channel)} · ${windowLabel}`
+}
+
+function comparableCopy(value: number | null) {
+  if (value == null) return { label: 'No comparison', tone: 'neutral' as const }
+  if (value >= 0) {
+    return {
+      label: `${value.toFixed(0)}% above comparable`,
+      tone: value >= 25 ? ('warning' as const) : ('neutral' as const),
+    }
+  }
+  return { label: `${Math.abs(value).toFixed(0)}% below comparable`, tone: 'success' as const }
+}
+
+function exceptionFeed(data: PerformanceData) {
+  const clusters = data.exceptionClusters || []
+  const items: Array<{
+    key: string
+    severity: 'info' | 'warning' | 'critical'
+    title: string
+    detail: string
+    statusLabel: string
+  }> = []
+  const topRefund = clusters.find((row) => row.kind === 'refunds')
+  const topVoid = clusters.find((row) => row.kind === 'voids')
+  if (topRefund) {
+    items.push({
+      key: `refund-${topRefund.locationId}-${topRefund.channel}`,
+      severity: (data.comparison.refundsPct ?? 0) >= 25 ? 'warning' : 'info',
+      title: clusterLine(topRefund),
+      detail: topRefund.locationName,
+      statusLabel: 'Refunds',
+    })
+  }
+  if (topVoid) {
+    items.push({
+      key: `void-${topVoid.locationId}-${topVoid.channel}`,
+      severity: (data.comparison.voidsPct ?? 0) >= 25 ? 'warning' : 'info',
+      title: clusterLine(topVoid),
+      detail: topVoid.locationName,
+      statusLabel: 'Voids',
+    })
+  }
+  const missingGuest = data.locationComparisons.filter((location) => location.guestCount == null)
+  if (missingGuest.length === 1) {
+    items.push({
+      key: `guest-${missingGuest[0].locationId}`,
+      severity: 'warning',
+      title: 'Guest count unavailable',
+      detail: missingGuest[0].locationName,
+      statusLabel: 'Data quality',
+    })
+  } else if (missingGuest.length > 1) {
+    items.push({
+      key: 'guest-scope',
+      severity: 'warning',
+      title: 'Guest count unavailable',
+      detail: `${missingGuest.length} locations · labeled Unavailable, not zero`,
+      statusLabel: 'Data quality',
+    })
+  }
+  return items.slice(0, 5)
+}
 
 export function PerformanceOperations() {
-  const navigate = useNavigate()
+  const { query, comparisonMode } = useAppState()
+  const queryKey = useMemo(() => JSON.stringify(query), [query])
+  const { page, limit, setPage, setLimit } = usePagination({ resetKey: queryKey })
+
+  const {
+    data: performance,
+    error,
+    isLoading,
+    isRefreshing,
+    reload,
+  } = useAsyncResource(
+    async () => (await analyticsApi.performance(query)).data,
+    [query],
+    { fallbackError: 'Unable to load operations performance' },
+  )
+
+  const {
+    data: orders,
+    error: ordersError,
+    isLoading: ordersLoading,
+    isRefreshing: ordersRefreshing,
+    reload: reloadOrders,
+  } = useAsyncResource(
+    async () =>
+      (
+        await analyticsApi.orders({
+          ...query,
+          exception: 'true',
+          ...toPaginationQuery(page, limit),
+        })
+      ).data,
+    [query, page, limit],
+    { fallbackError: 'Unable to load exception orders' },
+  )
+
+  const vsLabel = performance
+    ? comparisonDeltaLabel({
+        basis: comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        previousRange: performance.comparison.previousRange,
+      })
+    : undefined
+  const exceptions = useMemo(() => (performance ? exceptionFeed(performance) : []), [performance])
+  const trend = useMemo(() => {
+    if (!performance) return []
+    const clusters = performance.exceptionClusters || []
+    const locationCount = performance.locationComparisons.length
+    return (
+      [
+        ['Refunds', performance.comparison.refundsPct, performance.current.refundMoney, 'refunds'],
+        ['Voids', performance.comparison.voidsPct, performance.current.voidMoney, 'voids'],
+        ['Discounts', performance.comparison.discountsPct, performance.current.discountMoney, 'discounts'],
+      ] as const
+    ).map(([label, pct, moneyValue, kind]) => ({
+      label,
+      where: moneyValue ? whereLine(clusters, kind, locationCount) : 'No amount in this period',
+      copy: comparableCopy(pct),
+    }))
+  }, [performance])
+  const orderRows = useMemo(
+    () =>
+      (orders?.orders || []).map((row) => ({
+        id: row._id,
+        location: locName(row.locationId),
+        channel: channelLabel(row.channel),
+        date: row.businessDate,
+        orderId: row.providerOrderId,
+        refund: row.refundMoney,
+        voidAmt: row.voidMoney,
+        discount: row.discountMoney,
+      })),
+    [orders],
+  )
+  const ordersMeta = useMemo(
+    () =>
+      normalizePaginationMeta({
+        page: orders?.page ?? page,
+        limit: orders?.limit ?? limit,
+        total: orders?.total ?? 0,
+        totalPages: orders?.totalPages,
+        hasNext: orders?.hasNext,
+        hasPrev: orders?.hasPrev,
+      }),
+    [orders, page, limit],
+  )
 
   return (
     <AppShell
       title="Performance"
+      subtitle={
+        performance
+          ? `Exceptions through ${formatPriorBusinessDay(performance.range.to)} · refunds, voids and discounts from canonical POS facts`
+          : 'Refunds, voids and discounts versus the comparable period'
+      }
       activeNav="performance"
-
     >
-      <div className="flex flex-col gap-5">
-        <Tabs
-          value="operations"
-          onChange={(id) => {
-            if (id === 'stores') navigate('/performance')
-            if (id === 'operations') navigate('/performance/operations')
-            if (id === 'finance') navigate('/performance/finance')
-            if (id === 'forecast') navigate('/performance/forecast')
-          }}
-          items={[
-            { id: 'stores', label: 'Stores' },
-            { id: 'operations', label: 'Operations' },
-            { id: 'finance', label: 'Finance' },
-            { id: 'forecast', label: 'Forecast' },
-          ]}
-        />
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <KpiCard
-            label="Refunds"
-            value="$1,240"
-            meta="Order-level drill-down"
-            pill={
-              <Pill tone="danger" variant="subtle" size="sm">
-                ▲ 42%
-              </Pill>
-            }
-          />
-          <KpiCard
-            label="Voids"
-            value="$312"
-            meta="Order-level drill-down"
-            pill={
-              <Pill tone="success" variant="subtle" size="sm">
-                ▼ 6%
-              </Pill>
-            }
-          />
-          <KpiCard
-            label="Discounts"
-            value="$1,876"
-            meta="Order-level drill-down"
-            pill={
-              <Pill tone="warning" variant="subtle" size="sm">
-                ▲ 2%
-              </Pill>
-            }
-          />
-        </div>
-
-        <Card accentBorder="accent" padding="sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold tracking-widest text-accent-subtle-text uppercase">
-              Source & coverage
-            </p>
-            <Pill tone="accent" variant="outline">
-              96% coverage
-            </Pill>
+      <PerformanceTabs value="operations" />
+      <QueryState
+        data={performance}
+        error={error}
+        isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        onRetry={reload}
+        loader={
+          <div className="space-y-5">
+            <KpiRowSkeleton count={3} />
+            <DualPanelSkeleton />
           </div>
-        </Card>
+        }
+      >
+        {(d) => (
+          <div className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-3">
+              <a href="#exception-orders" className="block h-full min-w-0">
+                <CommandCenterMetric
+                  className="h-full"
+                  label="Refunds"
+                  value={money(d.current.refundMoney)}
+                  delta={d.comparison.refundsPct}
+                  deltaLabel={vsLabel}
+                  invert
+                  meta="Order-level drill-down"
+                />
+              </a>
+              <a href="#exception-orders" className="block h-full min-w-0">
+                <CommandCenterMetric
+                  className="h-full"
+                  label="Voids"
+                  value={money(d.current.voidMoney)}
+                  delta={d.comparison.voidsPct}
+                  deltaLabel={vsLabel}
+                  invert
+                  meta="Order-level drill-down"
+                />
+              </a>
+              <a href="#exception-orders" className="block h-full min-w-0">
+                <CommandCenterMetric
+                  className="h-full"
+                  label="Discounts"
+                  value={money(d.current.discountMoney)}
+                  delta={d.comparison.discountsPct}
+                  deltaLabel={vsLabel}
+                  invert
+                  meta="Order-level drill-down"
+                />
+              </a>
+            </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card title="Trend explanation" padding="lg">
-            <ul className="flex flex-col divide-y divide-card-border">
-              {trends.map((item) => (
-                <li
-                  key={item.title}
-                  className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-card-text">
-                      {item.title}
-                    </p>
-                    <p className="text-xs text-card-text-muted">{item.detail}</p>
-                  </div>
-                  <Pill tone={item.tone} variant="outline">
-                    {item.badge}
-                  </Pill>
-                </li>
-              ))}
-            </ul>
-          </Card>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-card-border px-4 py-3">
+              <p className="text-[10px] font-semibold tracking-[0.2em] text-card-text-faint uppercase">Source & coverage</p>
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+                <div className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-card-subtle">
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, d.coverage))}%` }} />
+                </div>
+                <Pill tone={d.dataStatus === 'COMPLETE' ? 'success' : d.dataStatus === 'UNAVAILABLE' ? 'neutral' : 'warning'} variant="outline" size="sm">
+                  {d.coverage}% coverage
+                </Pill>
+                <Pill tone={d.dataStatus === 'COMPLETE' ? 'success' : 'warning'} variant="outline" size="sm">
+                  {d.dataStatus}
+                </Pill>
+              </div>
+            </div>
 
-          <Card title="Operational exceptions" padding="lg">
-            <ul className="flex flex-col divide-y divide-card-border">
-              {exceptions.map((item) => (
-                <li
-                  key={item.title}
-                  className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0"
-                >
-                  <span
-                    className={cn(
-                      'size-2 shrink-0 rounded-full',
-                      toneDot[item.tone],
-                    )}
-                    aria-hidden
+            <div className="grid gap-5 lg:grid-cols-2">
+              <Card title="Where the change is">
+                <div className="space-y-3">
+                  {trend.map((row) => (
+                    <div key={row.label} className="flex items-start justify-between gap-3 rounded-lg border border-card-border px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-card-text">{row.label}</p>
+                        <p className="mt-0.5 text-xs text-card-text-muted">{row.where}</p>
+                      </div>
+                      <Pill tone={row.copy.tone} variant="outline" size="sm" className="shrink-0">
+                        {row.copy.label}
+                      </Pill>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-card-text-faint">
+                  Change is versus the comparable period, not a stored baseline. Daypart is shown only when order times vary enough to be reliable.
+                </p>
+              </Card>
+
+              <Card title="Operational exceptions">
+                <div className="space-y-2">
+                  {exceptions.length === 0 ? (
+                    <p className="text-sm text-card-text-muted">No refund, void or guest-count exception is recorded for this scope.</p>
+                  ) : (
+                    exceptions.map((row) => (
+                      <AlertRow
+                        key={row.key}
+                        severity={row.severity}
+                        title={row.title}
+                        detail={row.detail}
+                        statusLabel={row.statusLabel}
+                      />
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <Card
+              className="border-accent-border/50"
+              title="One-line summary"
+              action={<Pill tone="accent" variant="outline">{d.summaryMode === 'AI' ? 'AI insight' : 'Deterministic fallback'}</Pill>}
+            >
+              <p className="text-sm leading-6 text-card-text">{d.summaryLine}</p>
+              <p className="mt-2 text-xs text-card-text-muted">
+                Grounded in displayed refunds, voids, discounts and coverage. Does not contradict displayed KPIs
+                {d.summaryMode === 'AI' ? ' · AI summary' : ' · fallback text available'}.
+                It does not invent reason codes, promotions or review causes.
+              </p>
+            </Card>
+
+            <div id="exception-orders" className="relative">
+              {ordersError && !orders ? (
+                <QueryError message={ordersError} onRetry={reloadOrders} />
+              ) : (
+                <>
+                  {(ordersLoading || ordersRefreshing) && (
+                    <div className="pointer-events-none absolute inset-x-0 -top-3 h-0.5 overflow-hidden rounded-full bg-card-hover" aria-hidden>
+                      <div className="h-full w-1/3 animate-pulse bg-accent" />
+                    </div>
+                  )}
+                  <Table
+                    bodyHeight={EXCEPTION_TABLE_HEIGHT}
+                    columns={[
+                      { key: 'location', header: 'Location' },
+                      { key: 'channel', header: 'Channel' },
+                      { key: 'date', header: 'Business date' },
+                      { key: 'orderId', header: 'Order' },
+                      { key: 'refund', header: 'Refund', align: 'right', render: (row) => money(Number(row.refund)) },
+                      { key: 'voidAmt', header: 'Void', align: 'right', render: (row) => money(Number(row.voidAmt)) },
+                      { key: 'discount', header: 'Discount', align: 'right', render: (row) => money(Number(row.discount)) },
+                    ]}
+                    rows={ordersLoading && !orders ? [] : orderRows}
+                    getRowKey={(row) => String(row.id)}
+                    emptyMessage={
+                      ordersLoading && !orders
+                        ? 'Loading exception orders…'
+                        : 'No exception orders in this scope. Refunds, voids, discounts and canceled tickets appear here.'
+                    }
+                    footer={
+                      <Pagination
+                        meta={ordersMeta}
+                        onPageChange={setPage}
+                        onLimitChange={setLimit}
+                        itemLabel="exception orders"
+                        disabled={ordersLoading || ordersRefreshing}
+                      />
+                    }
                   />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-card-text">
-                      {item.title}
-                    </p>
-                    <p className="text-xs text-card-text-muted">{item.detail}</p>
-                  </div>
-                  <Pill tone={item.tone} variant="outline">
-                    {item.badge}
-                  </Pill>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-
-        <Card
-          title="One-line AI summary"
-          padding="lg"
-          action={
-            <Pill tone="info" variant="outline">
-              Displayed period
-            </Pill>
-          }
-        >
-          <p className="text-base font-semibold text-card-text">
-            Woodland Hills is the only material outlier: its refund increase is
-            concentrated in delivery and aligns with three cold-food reviews.
-          </p>
-          <p className="mt-2 text-sm text-card-text-muted">
-            Voids and discounts remain within normal ranges.
-          </p>
-          <p className="mt-4 text-xs text-card-text-muted">
-            Evidence: order-level refunds · reason codes · review feed
-          </p>
-          <p className="mt-2 text-xs text-accent-subtle-text">
-            Does not contradict displayed KPIs · fallback text available
-          </p>
-        </Card>
-      </div>
+                  <p className="mt-2 text-xs text-card-text-faint">
+                    Payment details are not stored or shown.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </QueryState>
     </AppShell>
   )
 }

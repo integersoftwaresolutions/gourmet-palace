@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { FiPlus } from 'react-icons/fi'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../../components/layout/AppShell'
+import { QueryError, QueryState, TableSkeleton } from '../../components/query'
 import {
   Button,
   Input,
@@ -20,66 +21,26 @@ import {
   type AdminUser,
   type Location,
 } from '../../lib/api'
+import { asyncMessage } from '../../lib/asyncError'
+import { useAsyncResource } from '../../hooks/useAsyncResource'
 
 type UserRow = AdminUser & Record<string, unknown>
 
 export function AdminPage() {
   const navigate = useNavigate()
-
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
+    async () => {
+      const [usersRes, locsRes] = await Promise.all([usersApi.list(), locationsApi.list()])
+      return { users: usersRes.data.users, locations: locsRes.data.locations }
+    },
+    [],
+    { fallbackError: 'Failed to load admin data' },
+  )
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
-
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      const [usersRes, locsRes] = await Promise.all([
-        usersApi.list(),
-        locationsApi.list(),
-      ])
-      setUsers(usersRes.data.users)
-      setLocations(locsRes.data.locations)
-    } catch (err) {
-      setError(
-        err instanceof ApiClientError
-          ? err.message
-          : 'Failed to load admin data',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [usersRes, locsRes] = await Promise.all([
-          usersApi.list(),
-          locationsApi.list(),
-        ])
-        if (cancelled) return
-        setUsers(usersRes.data.users)
-        setLocations(locsRes.data.locations)
-      } catch (err) {
-        if (cancelled) return
-        setError(
-          err instanceof ApiClientError
-            ? err.message
-            : 'Failed to load admin data',
-        )
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const locations = data?.locations ?? []
 
   const userColumns: TableColumn<UserRow>[] = [
     {
@@ -155,13 +116,9 @@ export function AdminPage() {
               onClick={() => {
                 void usersApi
                   .update(row.id, { isActive: !row.isActive })
-                  .then(() => load())
+                  .then(() => { setActionError(null); reload() })
                   .catch((err: unknown) =>
-                    setError(
-                      err instanceof ApiClientError
-                        ? err.message
-                        : 'Update failed',
-                    ),
+                    setActionError(asyncMessage(err, 'Update failed')),
                   )
               }}
             >
@@ -201,10 +158,8 @@ export function AdminPage() {
         className="mb-6"
       />
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-text">
-          {error}
-        </p>
+      {actionError && (
+        <QueryError message={actionError} className="mb-4" />
       )}
 
       <div className="mb-4 flex justify-start">
@@ -218,16 +173,24 @@ export function AdminPage() {
         </Button>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-surface-text-muted">Loading…</p>
-      ) : (
-        <Table
-          columns={userColumns}
-          rows={users as UserRow[]}
-          getRowKey={(row) => row.id}
-          emptyMessage="No users yet"
-        />
-      )}
+      <QueryState
+        data={data}
+        error={error}
+        isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        onRetry={reload}
+        loader={<TableSkeleton />}
+        className="mt-0"
+      >
+        {({ users }) => (
+          <Table
+            columns={userColumns}
+            rows={users as UserRow[]}
+            getRowKey={(row) => row.id}
+            emptyMessage="No users yet"
+          />
+        )}
+      </QueryState>
 
       {inviteOpen && (
         <InviteUserModal
@@ -236,7 +199,7 @@ export function AdminPage() {
           onClose={() => setInviteOpen(false)}
           onInvited={async () => {
             setInviteOpen(false)
-            await load()
+            reload()
           }}
         />
       )}
@@ -248,7 +211,7 @@ export function AdminPage() {
           onClose={() => setEditUser(null)}
           onSaved={async () => {
             setEditUser(null)
-            await load()
+            reload()
           }}
         />
       )}
