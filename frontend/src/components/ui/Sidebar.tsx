@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { FiSidebar } from 'react-icons/fi'
 
 export type SidebarItem = {
   id: string
@@ -28,6 +29,8 @@ export type SidebarProps = {
   onNavigate?: (id: string) => void
   footer?: SidebarFooter
   className?: string
+  collapsed?: boolean
+  onToggle?: () => void
 }
 
 export function Sidebar({
@@ -36,21 +39,29 @@ export function Sidebar({
   onNavigate,
   footer,
   className,
+  collapsed = false,
+  onToggle,
 }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full w-60 shrink-0 flex-col border-r border-canvas-border bg-canvas p-4',
+        'flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-canvas-border bg-canvas p-4 transition-[width,padding] duration-300 ease-in-out motion-reduce:transition-none',
+        collapsed && 'w-20 px-3',
         className,
       )}
     >
-      <div className="mb-8 flex items-center gap-3 px-1">
+      {onToggle && <div className="mb-3 flex shrink-0 justify-end">
+        <button type="button" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} className="flex size-7 items-center justify-center rounded-md text-canvas-text-muted transition-colors hover:bg-canvas-hover hover:text-canvas-text">
+          <FiSidebar className="size-4" aria-hidden="true" />
+        </button>
+      </div>}
+      <div className="mb-6 flex shrink-0 items-center gap-3 overflow-hidden px-1">
         {brand.logo ?? (
-          <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-text">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-bold text-brand-text">
             GP
           </div>
         )}
-        <div className="min-w-0">
+        <div aria-hidden={collapsed} className={cn('min-w-0 transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'opacity-0' : 'opacity-100')}>
           <p className="truncate text-sm font-semibold tracking-wide text-canvas-text">
             {brand.title}
           </p>
@@ -62,15 +73,18 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1" aria-label="Main">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" aria-label="Main">
         {items.map((item) => (
           <button
             key={item.id}
             type="button"
             disabled={item.disabled}
+            aria-label={item.label}
+            aria-current={item.active ? 'page' : undefined}
+            title={collapsed ? item.label : undefined}
             onClick={() => onNavigate?.(item.id)}
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors',
+              'flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ring',
               'disabled:cursor-not-allowed disabled:opacity-40',
               item.active
@@ -83,14 +97,14 @@ export function Sidebar({
                 {item.icon}
               </span>
             )}
-            <span className="flex-1 truncate">{item.label}</span>
-            {item.badge}
+            <span aria-hidden={collapsed} className={cn('flex-1 truncate transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'opacity-0' : 'opacity-100')}>{item.label}</span>
+            {!collapsed && item.badge}
           </button>
         ))}
       </nav>
 
       {footer && (
-        <div className="mt-auto flex items-center gap-3 border-t border-canvas-border pt-4">
+        <div title={collapsed ? `${footer.name} · ${footer.role || ''}` : undefined} className="mt-4 flex shrink-0 items-center gap-3 overflow-hidden border-t border-canvas-border pt-4">
           {footer.avatar ?? (
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-text">
               {footer.name
@@ -101,7 +115,7 @@ export function Sidebar({
                 .toUpperCase()}
             </div>
           )}
-          <div className="min-w-0">
+          <div aria-hidden={collapsed} className={cn('min-w-0 transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'opacity-0' : 'opacity-100')}>
             <p className="truncate text-sm text-canvas-text">{footer.name}</p>
             {footer.role && (
               <p className="truncate text-xs text-canvas-text-faint">

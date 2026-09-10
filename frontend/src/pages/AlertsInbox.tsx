@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { QueryError, QueryState, ListSkeleton } from '../components/query'
-import { Button, Card, Input, Pill, Select } from '../components/ui'
+import { Button, Input, Modal, Pill, Select } from '../components/ui'
 import { alertsApi, usersApi, type AlertRecord, type AdminUser } from '../lib/api'
 import { asyncMessage } from '../lib/asyncError'
 import { useAsyncResource } from '../hooks/useAsyncResource'
@@ -34,6 +34,9 @@ export function AlertsInbox() {
   const [actionError, setActionError] = useState('')
   const [busyId, setBusyId] = useState('')
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  const [dialog, setDialog] = useState<{ alert: AlertRecord; kind: 'note' | 'assign' | 'status' } | null>(null)
+  const [assigneeDraft, setAssigneeDraft] = useState('')
+  const [statusDraft, setStatusDraft] = useState('')
   const [users, setUsers] = useState<AdminUser[]>([])
   const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
     () => alertsApi.list({ ...query, status: status === 'all' ? '' : status }).then((res) => res.data.alerts),
@@ -43,7 +46,6 @@ export function AlertsInbox() {
 
   useEffect(() => {
     if (!isAdmin) {
-      setUsers([])
       return
     }
     let cancelled = false
@@ -70,6 +72,7 @@ export function AlertsInbox() {
       await alertsApi.action(id, body)
       setActionError('')
       if (body.action === 'note') setNoteDrafts((prev) => ({ ...prev, [id]: '' }))
+      setDialog(null)
       reload()
     } catch (e) {
       setActionError(asyncMessage(e, 'Alert action failed'))
@@ -92,10 +95,10 @@ export function AlertsInbox() {
         </div>
         <Pill tone="accent" variant="outline">{data?.length ?? 0} shown</Pill>
       </div>
-      {actionError ? <QueryError message={actionError} className="mt-4" /> : null}
+      {actionError && !dialog ? <QueryError message={actionError} className="mt-4" /> : null}
       <QueryState data={data} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<ListSkeleton />}>
         {(rows) => (
-        <Card>
+        <>
           {rows.length === 0 ? <p className="text-sm text-card-text-muted">No alerts in this scope.</p> : (
             <div className="space-y-3">
               {rows.map((alert) => {
@@ -110,7 +113,7 @@ export function AlertsInbox() {
                   ? alert.assigneeUserId.name
                   : null
                 return (
-                <div key={alert._id} className="rounded-lg border border-card-border p-4">
+                <div key={alert._id} className="rounded-lg border border-card-border bg-card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -150,48 +153,12 @@ export function AlertsInbox() {
                           </p>
                         ))}
                       </div>
-                      <div className="mt-3 flex flex-wrap items-end gap-2">
-                        <div className="min-w-[12rem] flex-1">
-                          <Input
-                            label="Add note"
-                            value={noteDrafts[alert._id] || ''}
-                            onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [alert._id]: e.target.value }))}
-                            placeholder="Observation or follow-up"
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === alert._id || !(noteDrafts[alert._id] || '').trim()}
-                          onClick={() => void act(alert._id, { action: 'note', note: noteDrafts[alert._id] })}
-                        >
-                          Save note
-                        </Button>
-                      </div>
-                      {isAdmin ? (
-                        <div className="mt-3 w-56">
-                          <Select
-                            label="Assignee"
-                            value={assigneeId}
-                            onChange={(value) => void act(alert._id, { action: 'assign', assigneeUserId: value || null })}
-                            options={[
-                              { value: '', label: 'Unassigned' },
-                              ...users.filter((u) => u.isActive !== false).map((u) => ({
-                                value: u.id,
-                                label: `${u.name} · ${u.role}`,
-                              })),
-                            ]}
-                          />
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-xs text-card-text-faint">Assignee · {assigneeName || 'Unassigned'}</p>
-                      )}
+                      <p className="mt-2 text-xs text-card-text-faint">Assignee ? {assigneeName || users.find((user) => user.id === assigneeId)?.name || 'Unassigned'}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {alert.status === 'OPEN' && <Button size="sm" variant="outline" disabled={busyId === alert._id} onClick={() => void act(alert._id, { action: 'acknowledge' })}>Acknowledge</Button>}
-                      {['OPEN', 'ACKNOWLEDGED'].includes(alert.status) && <Button size="sm" variant="outline" disabled={busyId === alert._id} onClick={() => void act(alert._id, { action: 'resolve' })}>Resolve</Button>}
-                      {['OPEN', 'ACKNOWLEDGED'].includes(alert.status) && <Button size="sm" variant="outline" disabled={busyId === alert._id} onClick={() => void act(alert._id, { action: 'dismiss' })}>Dismiss</Button>}
-                      {['RESOLVED', 'DISMISSED'].includes(alert.status) && <Button size="sm" variant="outline" disabled={busyId === alert._id} onClick={() => void act(alert._id, { action: 'reopen' })}>Reopen</Button>}
+                      <Button size="sm" variant="outline" onClick={() => { setActionError(''); setDialog({ alert, kind: 'note' }) }}>Add note</Button>
+                      {isAdmin && <Button size="sm" variant="outline" onClick={() => { setActionError(''); setAssigneeDraft(assigneeId); setDialog({ alert, kind: 'assign' }) }}>Add assignee</Button>}
+                      <Button size="sm" variant="outline" onClick={() => { setActionError(''); setStatusDraft(''); setDialog({ alert, kind: 'status' }) }}>Change status</Button>
                     </div>
                   </div>
                 </div>
@@ -199,9 +166,38 @@ export function AlertsInbox() {
               })}
             </div>
           )}
-        </Card>
+        </>
         )}
       </QueryState>
+      <Modal
+        open={dialog !== null}
+        onClose={() => { if (!busyId) { setDialog(null); setActionError('') } }}
+        title={dialog?.kind === 'note' ? 'Add note' : dialog?.kind === 'assign' ? 'Add assignee' : 'Change status'}
+        description={dialog ? `${dialog.alert.title} ? ${locName(dialog.alert.locationId)}` : undefined}
+        footer={dialog && <>
+          <Button variant="outline" size="sm" disabled={!!busyId} onClick={() => { setDialog(null); setActionError('') }}>Cancel</Button>
+          <Button size="sm" disabled={!!busyId || (dialog.kind === 'note' && !noteDrafts[dialog.alert._id]?.trim()) || (dialog.kind === 'status' && !statusDraft)} onClick={() => {
+            const body = dialog.kind === 'note'
+              ? { action: 'note', note: noteDrafts[dialog.alert._id].trim() }
+              : dialog.kind === 'assign'
+                ? { action: 'assign', assigneeUserId: assigneeDraft || null }
+                : { action: statusDraft }
+            void act(dialog.alert._id, body)
+          }}>{busyId ? 'Saving?' : dialog.kind === 'note' ? 'Save note' : dialog.kind === 'assign' ? 'Save assignee' : 'Save status'}</Button>
+        </>}
+      >
+        {actionError && <p role="alert" className="mb-4 text-sm text-danger-subtle-text">{actionError}</p>}
+        {dialog?.kind === 'note' && <Input label="Note" placeholder="Observation or follow-up" disabled={!!busyId} value={noteDrafts[dialog.alert._id] || ''} onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [dialog.alert._id]: e.target.value }))} />}
+        {dialog?.kind === 'assign' && <Select label="Assignee" disabled={!!busyId} value={assigneeDraft} onChange={setAssigneeDraft} options={[
+          { value: '', label: 'Unassigned' },
+          ...users.filter((user) => user.isActive !== false).map((user) => ({ value: user.id, label: `${user.name} ? ${user.role}` })),
+        ]} />}
+        {dialog?.kind === 'status' && <Select label="New status" disabled={!!busyId} value={statusDraft} onChange={setStatusDraft} options={[
+          { value: '', label: 'Choose status', disabled: true },
+          ...(dialog.alert.status === 'OPEN' ? [{ value: 'acknowledge', label: 'Acknowledged' }] : []),
+          ...(['OPEN', 'ACKNOWLEDGED'].includes(dialog.alert.status) ? [{ value: 'resolve', label: 'Resolved' }, { value: 'dismiss', label: 'Dismissed' }] : [{ value: 'reopen', label: 'Open' }]),
+        ]} />}
+      </Modal>
     </AppShell>
   )
 }

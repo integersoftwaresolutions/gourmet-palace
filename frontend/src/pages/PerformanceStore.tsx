@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AppShell } from '../components/layout/AppShell'
 import { PerformanceTabs } from '../components/layout/SectionTabs'
 import { CommandCenterMetric } from '../components/command-center/CommandCenterMetric'
@@ -35,7 +35,6 @@ const guestSourceLabel: Record<string, string> = {
   unavailable: 'Unavailable, not zero',
 }
 
-type StoreView = 'normal' | 'peers'
 type ItemView = 'top' | 'slow'
 
 function locName(id: { _id: string; name: string } | string | undefined): string {
@@ -50,7 +49,6 @@ export function PerformanceStore() {
     [query],
     { fallbackError: 'Unable to load performance' },
   )
-  const [view, setView] = useState<StoreView>('normal')
   const [itemView, setItemView] = useState<ItemView>('top')
 
   const selectedLocation = locations.find((location) => location.id === selectedLocationId)
@@ -61,16 +59,11 @@ export function PerformanceStore() {
     : 'Source freshness unavailable'
   const vsLabel = data
     ? comparisonDeltaLabel({
-        basis: view === 'peers' ? 'peers' : comparisonMode === 'prior-year' ? 'prior-year' : 'previous',
+        basis: comparisonMode,
         previousRange: data.comparison.previousRange,
       })
     : undefined
-  const deltas = view === 'peers' ? data?.peerComparison : data?.comparison
-  const peerToggleDisabled = selectedLocationId === 'all' || !data?.peerComparison
-  const periodTabLabel = comparisonMode === 'prior-year' ? 'vs. prior year' : 'vs. prior period'
-  useEffect(() => {
-    if (peerToggleDisabled) setView('normal')
-  }, [peerToggleDisabled])
+  const deltas = data?.comparison
 
   const channelItems = useMemo(
     () => Object.entries(data?.channels || {})
@@ -132,25 +125,8 @@ export function PerformanceStore() {
               )}
               <h2 className="text-2xl font-semibold tracking-tight text-surface-text">{storeName}</h2>
             </div>
-            <Tabs
-              variant="pill"
-              aria-label="Store comparison basis"
-              value={peerToggleDisabled ? 'normal' : view}
-              onChange={(id) => setView(id as StoreView)}
-              items={[
-                { id: 'normal', label: periodTabLabel },
-                { id: 'peers', label: 'vs. other locations', disabled: peerToggleDisabled },
-              ]}
-            />
           </div>
 
-          {view === 'peers' && data.peerComparison ? (
-            <p className="text-xs text-card-text-muted">
-              KPI change is versus the average of {data.peerComparison.peerCount} other authorized location
-              {data.peerComparison.peerCount === 1 ? '' : 's'} in the <span className="font-medium">same selected dates</span>
-              {' '}({formatComparisonRangeLabel(data.range)}).
-            </p>
-          ) : (
             <p className="text-xs text-card-text-muted">
               KPI change is versus the header{' '}
               <span className="font-medium">{comparisonMode === 'prior-year' ? 'Prior year' : 'Prior period'}</span>
@@ -160,7 +136,6 @@ export function PerformanceStore() {
               {comparisonMode === 'previous' ? ' — the equal-length window immediately before the selected dates' : ' — the same dates last year'}
               . Switch the header control to change this basis.
             </p>
-          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 min-[1600px]:grid-cols-6">
             <CommandCenterMetric label="Gross sales" value={money(data.current.grossMoney)} delta={deltas?.grossPct ?? null} deltaLabel={vsLabel} meta={freshness} />
@@ -273,26 +248,7 @@ export function PerformanceStore() {
             </Card>
           </div>
 
-          {view === 'peers' && (
-            <Card title="Location comparison · selected period">
-              <div className="space-y-2">
-                {data.locationComparisons.map((row) => (
-                  <div key={row.locationId} className="flex items-center justify-between rounded-lg border border-card-border px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-card-text">{row.locationName}</p>
-                      <p className="text-xs text-card-text-muted">{row.orderCount.toLocaleString()} tickets · coverage {row.coverage}%</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold tabular-nums text-card-text">{money(row.netMoney)}</p>
-                      <TrendBadge value={row.netSalesPct} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {selectedLocationId === 'all' && data.locationScores.length > 1 && view === 'normal' && (
+          {selectedLocationId === 'all' && data.locationScores.length > 1 && (
             <Card title={`Ending-day location scores · ${formatPriorBusinessDay(data.range.to)}`}>
               <div className="space-y-2">
                 {data.locationScores.map((row) => (

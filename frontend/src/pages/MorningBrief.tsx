@@ -7,6 +7,7 @@ import { asyncMessage } from '../lib/asyncError'
 import { useAsyncResource } from '../hooks/useAsyncResource'
 import { useAppState } from '../context/useAppState'
 import { useAuth } from '../context/useAuth'
+import { cn } from '../lib/cn'
 
 const money = (value: unknown) => typeof value === 'number'
   ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value / 100)
@@ -47,10 +48,11 @@ export function MorningBrief() {
       title="Morning Executive Brief"
       subtitle="Immutable prior-day evidence snapshots, delivered at the 5:00 AM Pacific target"
       activeNav="brief"
+      contained
       actions={isAdmin ? <Button size="sm" variant="outline" onClick={() => void generate()} disabled={busy}>{busy ? 'Generating…' : 'Generate / refresh'}</Button> : undefined}
     >
       {actionError ? <QueryError message={actionError} className="mb-4" /> : null}
-      <QueryState data={briefs} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<SplitDetailSkeleton />} className="mt-0">
+      <QueryState data={briefs} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<SplitDetailSkeleton />} className="mt-0 flex min-h-0 flex-1 flex-col">
         {(briefs) => {
           const selected = briefs.find((brief) => brief._id === selectedId) || briefs[0] || null
           return <BriefBody briefs={briefs} selected={selected} onSelect={setSelectedId} isAdmin={isAdmin} />
@@ -80,23 +82,40 @@ function BriefBody({
   const priorities = records(content.priorities)
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[18rem_1fr]">
-      <Card title="Brief history">
-        <div className="space-y-2">
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,2fr)] gap-5 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[19rem_minmax(0,1fr)] print:block">
+      <aside aria-label="Brief history" className="min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-card-border bg-card [scrollbar-gutter:stable] print:hidden">
+        <div className="space-y-2 p-3">
           {briefs.length === 0 && <p className="text-sm text-card-text-muted">No briefs have been published yet.</p>}
           {briefs.map((brief) => (
-            <button key={brief._id} onClick={() => onSelect(brief._id)} className="flex w-full items-center justify-between rounded-lg border border-card-border px-3 py-2 text-left hover:bg-card-hover">
-              <span>
-                <span className="block text-sm font-medium text-card-text">{brief.businessDate}</span>
-                <span className="text-xs text-card-text-muted">Revision {brief.revision} · {new Date(brief.publishedAt).toLocaleString()}</span>
+            <button
+              type="button"
+              key={brief._id}
+              onClick={() => onSelect(brief._id)}
+              aria-current={selected?._id === brief._id ? 'true' : undefined}
+              aria-controls="brief-detail"
+              className={cn(
+                'block w-full rounded-lg border p-3 text-left transition-colors',
+                selected?._id === brief._id
+                  ? 'border-card-border-strong bg-card-active'
+                  : 'border-card-border hover:bg-card-hover',
+              )}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-card-text">{brief.businessDate}</span>
               </span>
-              <Pill tone={brief.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline" size="sm">{brief.status}</Pill>
+              <span className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-card-text-muted">Revision {brief.revision}</span>
+                <Pill tone={brief.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline" size="sm">{brief.status}</Pill>
+              </span>
+              <span className="mt-2 block text-xs leading-relaxed text-card-text-muted">
+                Published {new Date(brief.publishedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </span>
             </button>
           ))}
         </div>
-      </Card>
+      </aside>
 
-      <div className="space-y-5">
+      <section id="brief-detail" tabIndex={0} aria-label={selected ? `Brief for ${selected.businessDate}, revision ${selected.revision}` : 'Brief details'} className="min-h-0 min-w-0 space-y-5 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] print:overflow-visible">
         {selected ? (
           <>
             <Card title={`${selected.businessDate} · Revision ${selected.revision}`} action={<Pill tone={selected.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline">{selected.status}</Pill>}>
@@ -174,7 +193,7 @@ function BriefBody({
             </Card>
           </>
         ) : <Card><p className="text-sm text-card-text-muted">No brief is available for your authorized scope yet.</p></Card>}
-      </div>
+      </section>
     </div>
   )
 }

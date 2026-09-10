@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AppShell } from '../../components/layout/AppShell'
 import { AdminTabs } from '../../components/layout/SectionTabs'
@@ -18,29 +18,6 @@ function toBase64(file: File) {
   })
 }
 
-const channelKeys = ['dine_in', 'takeout', 'delivery', 'third_party', 'direct_online'] as const
-type ChannelKey = typeof channelKeys[number]
-const emptyChannels: Record<ChannelKey, string> = { dine_in: '', takeout: '', delivery: '', third_party: '', direct_online: '' }
-
-function squareDrafts(connections: ConnectionRecord[]) {
-  const square = connections.find((row) => row.provider === 'square')
-  const mappings = (square?.mappings || {}) as Record<string, unknown>
-  const raw = (mappings.channels || {}) as Record<string, unknown>
-  const channels = { ...emptyChannels }
-  for (const key of channelKeys) channels[key] = Array.isArray(raw[key]) ? (raw[key] as unknown[]).join(', ') : ''
-  const aliases = (mappings.itemAliases || {}) as Record<string, string | Record<string, unknown>>
-  return {
-    channels,
-    channelsApproved: mappings.channelsApproved === true,
-    itemAliasesText: Object.entries(aliases).map(([source, alias]) => {
-      const name = typeof alias === 'string' ? alias : String(alias.name || '')
-      const category = typeof alias === 'string' ? '' : String(alias.category || '')
-      return `${source} = ${name}${category ? ` | ${category}` : ''}`
-    }).join('\n'),
-    itemAliasesApproved: mappings.itemAliasesApproved === true,
-  }
-}
-
 export function AdministrationIntegration() {
   const { locations, selectedLocationId } = useAppState()
   const [searchParams] = useSearchParams()
@@ -53,23 +30,10 @@ export function AdministrationIntegration() {
   const [notice, setNotice] = useState('')
   const [googleSyncBusy, setGoogleSyncBusy] = useState(false)
   const [toastLoc, setToastLoc] = useState('')
-  const [channels, setChannels] = useState<Record<ChannelKey, string>>(emptyChannels)
-  const [channelsApproved, setChannelsApproved] = useState(false)
-  const [itemAliasesText, setItemAliasesText] = useState('')
-  const [itemAliasesApproved, setItemAliasesApproved] = useState(false)
   const [backfillLoc, setBackfillLoc] = useState('')
   const [backfillFrom, setBackfillFrom] = useState('')
   const [backfillTo, setBackfillTo] = useState('')
   const [backfillBusy, setBackfillBusy] = useState(false)
-
-  useEffect(() => {
-    if (!rows) return
-    const drafts = squareDrafts(rows)
-    setChannels(drafts.channels)
-    setChannelsApproved(drafts.channelsApproved)
-    setItemAliasesText(drafts.itemAliasesText)
-    setItemAliasesApproved(drafts.itemAliasesApproved)
-  }, [rows])
 
   const oauthError = searchParams.get('error')
   const displayError = actionError || oauthError
@@ -113,41 +77,6 @@ export function AdministrationIntegration() {
       reload()
     } catch (e) {
       setActionError(asyncMessage(e, 'Square mapping failed'))
-    }
-  }
-  const saveChannels = async () => {
-    try {
-      const current = (by.square?.mappings || {}) as Record<string, unknown>
-      const parsed = Object.fromEntries(channelKeys.map((k) => [k, channels[k].split(',').map((x) => x.trim()).filter(Boolean)]))
-      await integrationsApi.setMappings('square', { ...current, channels: parsed, channelsApproved })
-      setNotice(channelsApproved
-        ? 'Square channel mapping saved and explicitly approved. Direct-order metrics may now publish after validation.'
-        : 'Square channel mapping saved as unapproved. Direct-order metrics remain unavailable.')
-      reload()
-    } catch (e) {
-      setActionError(asyncMessage(e, 'Channel mapping failed'))
-    }
-  }
-  const saveItemAliases = async () => {
-    try {
-      const aliases: Record<string, { name: string; category?: string }> = {}
-      for (const rawLine of itemAliasesText.split('\n')) {
-        const line = rawLine.trim()
-        if (!line) continue
-        const [source, ...rest] = line.split('=')
-        if (!source?.trim() || !rest.length) throw new Error(`Invalid alias line: ${line}`)
-        const [name, category] = rest.join('=').split('|').map((x) => x.trim())
-        if (!name) throw new Error(`Canonical name is required: ${line}`)
-        aliases[source.trim()] = { name, ...(category ? { category } : {}) }
-      }
-      const current = (by.square?.mappings || {}) as Record<string, unknown>
-      await integrationsApi.setMappings('square', { ...current, itemAliases: aliases, itemAliasesApproved })
-      setNotice(itemAliasesApproved
-        ? 'Cross-POS item aliases saved and approved for future Square/Toast normalization.'
-        : 'Cross-POS item aliases saved as unapproved; provider item names remain unchanged.')
-      reload()
-    } catch (e) {
-      setActionError(asyncMessage(e, 'Item alias mapping failed'))
     }
   }
   const runBackfill = async () => {
@@ -229,7 +158,7 @@ export function AdministrationIntegration() {
   }
 
   return (
-    <AppShell title="Integrations" subtitle="Square live POS, Google (GA4 / Search Console / Business Profile), Toast historical-only import, and canonical mappings" activeNav="admin">
+    <AppShell title="Integrations" subtitle="Square live POS, Google (GA4 / Search Console / Business Profile), Toast historical-only import, and location mappings" activeNav="admin">
       <AdminTabs value="integrations" />
       {displayError && <QueryError message={displayError} className="mt-5" />}
       {notice && <Card accentBorder="accent" className="mt-4"><p className="whitespace-pre-line text-sm text-card-text-muted">{notice}</p></Card>}
@@ -240,7 +169,7 @@ export function AdministrationIntegration() {
           title="Square · live V1 POS"
           action={<Pill tone={square?.status === 'READY' ? 'success' : square?.status === 'PARTIAL' ? 'warning' : square?.status === 'ERROR' ? 'danger' : 'neutral'} variant="outline">{square?.status || 'UNAVAILABLE'}</Pill>}
         >
-          <p className="text-sm text-card-text-muted">Live order/sales provider. OAuth, explicit restaurant mapping and approved channel mapping are required.</p>
+          <p className="text-sm text-card-text-muted">Connect Square to import live orders and sales, then link each restaurant to its Square location.</p>
           {square?.lastError && <p className="mt-2 text-xs text-danger-subtle-text">{square.lastError}</p>}
           <div className="mt-4 flex gap-2">
             {!square ? <Button size="sm" onClick={() => void connect('square')}>Connect with OAuth</Button> : (
@@ -316,33 +245,6 @@ export function AdministrationIntegration() {
             <div className="flex items-end"><Button disabled={backfillBusy || !backfillLoc || !backfillFrom || !backfillTo} onClick={() => void runBackfill()}>{backfillBusy ? 'Backfilling…' : 'Run backfill'}</Button></div>
           </div>
           <p className="mt-2 text-xs text-card-text-faint">Maximum 370 business dates per request. Live acceptance still requires reconciliation against the client-owned Square account.</p>
-        </Card>
-
-        <Card title="Square channel mapping · requires explicit approval">
-          <p className="text-sm text-card-text-muted">Enter provider source/fulfillment labels or fragments separated by commas. Unmatched traffic remains <strong>Unknown</strong>. Direct-online volume/revenue is withheld until this mapping is explicitly approved and validated against representative Square data.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {channelKeys.map((k) => (
-              <label key={k} className="text-xs text-card-text-muted">
-                <span className="mb-1 block">{k.replaceAll('_', ' ')}</span>
-                <input value={channels[k]} onChange={(e) => setChannels({ ...channels, [k]: e.target.value })} placeholder="e.g. Online Store, Direct" className="h-10 w-full rounded-lg border border-card-border bg-card px-3 text-sm text-card-text outline-none focus:border-brand" />
-              </label>
-            ))}
-          </div>
-          <label className="mt-4 flex items-start gap-2 text-sm text-card-text">
-            <input type="checkbox" checked={channelsApproved} onChange={(e) => setChannelsApproved(e.target.checked)} className="mt-1" />
-            <span><strong>I approve this final Square channel mapping for go-live.</strong><span className="block text-xs text-card-text-muted">Only check this after representative data confirms dine-in, takeout, delivery, third-party and direct-online classification.</span></span>
-          </label>
-          <div className="mt-4"><Button onClick={() => void saveChannels()}>Save channel mapping</Button></div>
-        </Card>
-
-        <Card title="Cross-POS canonical item aliases · requires approval">
-          <p className="text-sm text-card-text-muted">Map a Square catalog ID/name or Toast item ID/name to one canonical reporting name. One mapping is used by both live Square ingestion and historical Toast import only after explicit approval. Provider IDs remain preserved for provenance.</p>
-          <textarea value={itemAliasesText} onChange={(e) => setItemAliasesText(e.target.value)} rows={7} placeholder={'source item id or name = Canonical item name | Optional category\nABC123 = Chicken Breast | Meat'} className="mt-4 w-full rounded-lg border border-card-border bg-card p-3 font-mono text-xs text-card-text outline-none focus:border-brand" />
-          <label className="mt-3 flex items-start gap-2 text-sm text-card-text">
-            <input type="checkbox" checked={itemAliasesApproved} onChange={(e) => setItemAliasesApproved(e.target.checked)} className="mt-1" />
-            <span><strong>I approve these aliases for canonical cross-POS reporting.</strong><span className="block text-xs text-card-text-muted">Uncertain matches should stay unmapped. Reprocessing remains traceable to the original provider facts.</span></span>
-          </label>
-          <div className="mt-4"><Button onClick={() => void saveItemAliases()}>Save item aliases</Button></div>
         </Card>
 
         <Card title="Toast historical export · one-time only">

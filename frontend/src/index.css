@@ -25,6 +25,10 @@
     color-scheme: dark;
   }
 
+  html.light {
+    color-scheme: light;
+  }
+
   body {
     margin: 0;
     background-color: var(--color-surface);

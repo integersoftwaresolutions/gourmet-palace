@@ -1,5 +1,5 @@
 import { Button } from './Button'
-import { Select } from './Select'
+import { FiChevronDown } from 'react-icons/fi'
 import { cn } from '../../lib/cn'
 import {
   PAGE_SIZE_OPTIONS,
@@ -49,18 +49,18 @@ export function Pagination({
 
       <div className="flex flex-wrap items-center gap-2">
         {onLimitChange ? (
-          <Select
-            size="sm"
-            className="w-[7.5rem]"
-            value={String(meta.limit)}
-            disabled={disabled}
-            onChange={(value) => onLimitChange(Number(value))}
-            options={pageSizeOptions.map((n) => ({
-              value: String(n),
-              label: `${n} / page`,
-            }))}
-            id="pagination-page-size"
-          />
+          <div className="relative w-[7.5rem]">
+            <select
+              aria-label="Rows per page"
+              className="h-8 w-full appearance-none rounded-lg border border-card-border bg-card-subtle pr-8 pl-3 text-xs text-card-text hover:border-card-border-strong disabled:opacity-50"
+              value={meta.limit}
+              disabled={disabled}
+              onChange={(event) => onLimitChange(Number(event.target.value))}
+            >
+              {pageSizeOptions.map((n) => <option key={n} value={n}>{n} / page</option>)}
+            </select>
+            <FiChevronDown aria-hidden="true" className="pointer-events-none absolute top-2 right-3 size-4 text-card-text-faint" />
+          </div>
         ) : null}
 
         <span className="text-xs text-card-text-muted tabular-nums">{pageLabel}</span>
