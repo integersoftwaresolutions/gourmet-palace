@@ -7,7 +7,7 @@ import { Button, Card, Pill } from '../components/ui'
 import { invoicesApi, type InvoiceRecord } from '../lib/api'
 import { asyncMessage } from '../lib/asyncError'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { money } from '../lib/format'
+import { generalDate, money } from '../lib/format'
 import { useAppState } from '../context/useAppState'
 
 export function OperationsInvoices() {
@@ -52,7 +52,7 @@ export function OperationsInvoices() {
             <div key={invoice._id} className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border py-3 last:border-0">
               <div>
                 <p className="text-sm font-medium text-card-text">{invoice.vendorName || 'Unknown vendor'} · {invoice.invoiceNumber || 'No number'}</p>
-                <p className="text-xs text-card-text-muted">{invoice.invoiceDate} · {names[invoice.locationId] || invoice.locationId} · {money(invoice.totalMoney)}</p>
+                <p className="text-xs text-card-text-muted">{generalDate(invoice.invoiceDate)} · {names[invoice.locationId] || invoice.locationId} · {money(invoice.totalMoney)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Pill tone={invoice.status === 'APPROVED' ? 'success' : invoice.status === 'FAILED' || invoice.status === 'REJECTED' ? 'danger' : 'warning'} variant="outline">{invoice.status}</Pill>

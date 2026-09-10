@@ -8,6 +8,7 @@ import { useAsyncResource } from '../hooks/useAsyncResource'
 import { useAppState } from '../context/useAppState'
 import { useAuth } from '../context/useAuth'
 import { cn } from '../lib/cn'
+import { briefBusinessDate, businessDate, publishedDateTime } from '../lib/format'
 
 const money = (value: unknown) => typeof value === 'number'
   ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value / 100)
@@ -82,8 +83,8 @@ function BriefBody({
   const priorities = records(content.priorities)
 
   return (
-    <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_minmax(0,2fr)] gap-5 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[19rem_minmax(0,1fr)] print:block">
-      <aside aria-label="Brief history" className="min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-card-border bg-card [scrollbar-gutter:stable] print:hidden">
+    <div className="grid min-w-0 flex-1 gap-4 sm:gap-5 lg:min-h-0 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[19rem_minmax(0,1fr)] print:block">
+      <aside aria-label="Brief history" className="max-h-[18rem] min-w-0 overflow-y-auto overscroll-contain rounded-xl border border-card-border bg-card [scrollbar-gutter:stable] lg:max-h-none lg:min-h-0 print:hidden">
         <div className="space-y-2 p-3">
           {briefs.length === 0 && <p className="text-sm text-card-text-muted">No briefs have been published yet.</p>}
           {briefs.map((brief) => (
@@ -101,24 +102,23 @@ function BriefBody({
               )}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-card-text">{brief.businessDate}</span>
+                <span className="text-sm font-semibold text-card-text">{briefBusinessDate(brief.businessDate, brief.revision)}</span>
               </span>
-              <span className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs text-card-text-muted">Revision {brief.revision}</span>
+              <span className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 <Pill tone={brief.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline" size="sm">{brief.status}</Pill>
               </span>
               <span className="mt-2 block text-xs leading-relaxed text-card-text-muted">
-                Published {new Date(brief.publishedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                {publishedDateTime(brief.publishedAt)}
               </span>
             </button>
           ))}
         </div>
       </aside>
 
-      <section id="brief-detail" tabIndex={0} aria-label={selected ? `Brief for ${selected.businessDate}, revision ${selected.revision}` : 'Brief details'} className="min-h-0 min-w-0 space-y-5 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] print:overflow-visible">
+      <section id="brief-detail" tabIndex={0} aria-label={selected ? `Brief for ${selected.businessDate}, revision ${selected.revision}` : 'Brief details'} className="min-w-0 space-y-4 overflow-visible sm:space-y-5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-gutter:stable] print:overflow-visible">
         {selected ? (
           <>
-            <Card title={`${selected.businessDate} · Revision ${selected.revision}`} action={<Pill tone={selected.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline">{selected.status}</Pill>}>
+            <Card title={briefBusinessDate(selected.businessDate, selected.revision)} action={<Pill tone={selected.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline">{selected.status}</Pill>}>
               <p className="text-sm text-card-text-muted">{String(content.headline || '')}</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <KpiCard label="Net sales" value={money(core.netMoney)} meta="Frozen canonical snapshot" />
@@ -142,7 +142,7 @@ function BriefBody({
                   <p className="mt-1 font-medium text-card-text">{weakest.name ? `${String(weakest.name)} · ${String(weakest.score)}/100` : 'Unavailable'}</p>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                 <div><span className="block text-card-text-faint">Refunds</span><span className="text-card-text">{money(exceptions.refundMoney)}</span></div>
                 <div><span className="block text-card-text-faint">Voids</span><span className="text-card-text">{money(exceptions.voidMoney)}</span></div>
                 <div><span className="block text-card-text-faint">Discounts</span><span className="text-card-text">{money(exceptions.discountMoney)}</span></div>
@@ -171,7 +171,7 @@ function BriefBody({
               </Card>
               <Card title="Forecast">
                 <p className="text-sm text-card-text">{money(object(content.forecast).expectedMoney)} expected</p>
-                <p className="mt-1 text-xs text-card-text-muted">{String(object(content.forecast).status || 'UNAVAILABLE')} · week {String(object(content.forecast).weekStart || '—')}</p>
+                <p className="mt-1 text-xs text-card-text-muted">{String(object(content.forecast).status || 'UNAVAILABLE')} · week {businessDate(object(content.forecast).weekStart)}</p>
               </Card>
               <Card title="SEO & reviews">
                 <p className="text-sm text-card-text">{String(object(content.growth).reviewCount ?? 0)} reviews · {String(object(content.growth).seoCount ?? 0)} SEO records</p>

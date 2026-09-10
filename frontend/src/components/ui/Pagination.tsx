@@ -37,7 +37,7 @@ export function Pagination({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center justify-between gap-3 border-t border-card-border px-4 py-3',
+        'flex flex-col items-stretch justify-between gap-3 border-t border-card-border px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-4',
         className,
       )}
     >
@@ -47,9 +47,9 @@ export function Pagination({
           : `Showing ${range.from.toLocaleString()}–${range.to.toLocaleString()} of ${meta.total.toLocaleString()} ${itemLabel}`}
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
         {onLimitChange ? (
-          <div className="relative w-[7.5rem]">
+          <div className="relative min-w-[7.5rem] flex-1 sm:flex-none">
             <select
               aria-label="Rows per page"
               className="h-8 w-full appearance-none rounded-lg border border-card-border bg-card-subtle pr-8 pl-3 text-xs text-card-text hover:border-card-border-strong disabled:opacity-50"

@@ -33,7 +33,7 @@ export function AuthLayout({
       />
 
       <div className="relative w-full max-w-[420px]">
-        <div className="rounded-2xl border border-card-border bg-card px-6 py-8 shadow-xl md:px-8 md:py-9">
+        <div className="rounded-2xl border border-card-border bg-card px-4 py-6 shadow-xl sm:px-6 sm:py-8 md:px-8 md:py-9">
           <div className="mb-7 flex flex-col items-center text-center">
             <Link to="/signin" className="mb-4 inline-flex">
               <span className="flex size-12 items-center justify-center rounded-xl bg-brand text-lg font-bold text-brand-text">

@@ -128,7 +128,7 @@ export function ComponentDemo() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <header className="border-b border-surface-border px-6 py-5 md:px-10">
+      <header className="border-b border-surface-border px-4 py-5 sm:px-6 md:px-10">
         <p className="text-[11px] font-medium tracking-widest text-accent-subtle-text uppercase">
           Gourmet Palace
         </p>
@@ -141,7 +141,7 @@ export function ComponentDemo() {
         </p>
       </header>
 
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8 md:px-10">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 md:px-10">
         {/* Buttons */}
         <Section title="Button" description="fill · outline · ghost · subtle × brand · accent · neutral · danger">
           <div className="flex flex-col gap-4">
@@ -405,7 +405,7 @@ export function ComponentDemo() {
         {/* Sidebar preview */}
         <Section title="Sidebar" description="Embedded preview — not full app chrome">
           <div className="overflow-hidden rounded-xl border border-card-border">
-            <div className="flex h-[360px]">
+            <div className="flex min-h-[360px] flex-col sm:h-[360px] sm:flex-row">
               <Sidebar
                 brand={{
                   title: 'Gourmet Palace',
@@ -460,7 +460,7 @@ export function ComponentDemo() {
                   role: 'Organization Owner',
                 }}
               />
-              <div className="flex flex-1 flex-col bg-surface p-6">
+              <div className="flex min-w-0 flex-1 flex-col bg-surface p-4 sm:p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <p className="text-sm text-surface-text-muted">
                     Active: {sidebarActive}

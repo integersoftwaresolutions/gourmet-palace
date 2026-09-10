@@ -15,9 +15,9 @@ export type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
 
 const paddingClasses = {
   none: '',
-  sm: 'p-4',
-  md: 'p-5',
-  lg: 'p-6',
+  sm: 'p-3 sm:p-4',
+  md: 'p-4 sm:p-5',
+  lg: 'p-4 sm:p-6',
 } as const
 
 export function Card({
@@ -36,7 +36,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'rounded-xl border bg-card text-card-text',
+        'min-w-0 rounded-xl border bg-card text-card-text',
         accentBorder === 'accent' && 'border-accent-border',
         accentBorder === 'brand' && 'border-brand-border',
         !accentBorder && 'border-card-border',
@@ -48,13 +48,13 @@ export function Card({
       {hasHeader && (
         <div
           className={cn(
-            'flex items-center justify-between gap-3',
-            padding !== 'none' ? paddingClasses[padding] : 'p-5',
+            'flex min-w-0 flex-wrap items-start justify-between gap-3 sm:items-center',
+            padding !== 'none' ? paddingClasses[padding] : 'p-4 sm:p-5',
             children || footer ? 'pb-0' : undefined,
           )}
         >
           {title != null && (
-            <div className="text-sm font-semibold tracking-widest text-card-text-faint uppercase">
+            <div className="min-w-0 text-sm font-semibold tracking-widest break-words text-card-text-faint uppercase">
               {title}
             </div>
           )}
@@ -72,7 +72,7 @@ export function Card({
         <div
           className={cn(
             'border-t border-card-border',
-            padding !== 'none' ? paddingClasses[padding] : 'p-5',
+            padding !== 'none' ? paddingClasses[padding] : 'p-4 sm:p-5',
           )}
         >
           {footer}

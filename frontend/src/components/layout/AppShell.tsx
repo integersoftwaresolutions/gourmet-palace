@@ -105,7 +105,7 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
   }
 
   return (
-    <div className={cn('flex min-h-screen bg-surface', contained && 'h-dvh min-h-0 overflow-hidden print:h-auto print:overflow-visible')}>
+    <div className={cn('flex min-h-screen min-w-0 bg-surface', contained && 'lg:h-dvh lg:min-h-0 lg:overflow-hidden print:h-auto print:overflow-visible')}>
       <Sidebar
         className="sticky top-0 hidden h-dvh lg:flex print:hidden"
         collapsed={sidebarCollapsed}
@@ -120,9 +120,9 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
         footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role }}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-surface-border px-6 py-3 md:px-8 print:hidden">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-52">
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3 sm:px-6 md:px-8 print:hidden">
+          <div className="grid w-full min-w-0 grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:flex-wrap">
+            <div className="col-span-2 w-full sm:w-52">
               <Select
                 size="sm"
                 value={selectedLocationId}
@@ -133,7 +133,7 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
                 onChange={setSelectedLocationId}
               />
             </div>
-            <div className="w-36">
+            <div className="w-full sm:w-36">
               <Select
                 size="sm"
                 value={datePreset}
@@ -151,11 +151,11 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
             </div>
             {datePreset === 'custom' && (
               <>
-                <input aria-label="From date" type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 rounded-lg border border-card-border bg-card px-2 text-xs text-card-text" />
-                <input aria-label="To date" type="date" value={customTo} min={customFrom} onChange={(e) => setCustomTo(e.target.value)} className="h-9 rounded-lg border border-card-border bg-card px-2 text-xs text-card-text" />
+                <input aria-label="From date" type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} className="h-10 min-w-0 w-full rounded-lg border border-card-border bg-card px-2 text-base text-card-text sm:h-9 sm:w-auto sm:text-xs" />
+                <input aria-label="To date" type="date" value={customTo} min={customFrom} onChange={(e) => setCustomTo(e.target.value)} className="h-10 min-w-0 w-full rounded-lg border border-card-border bg-card px-2 text-base text-card-text sm:h-9 sm:w-auto sm:text-xs" />
               </>
             )}
-            <div className="w-36">
+            <div className="w-full sm:w-36">
               <Select
                 size="sm"
                 value={comparisonMode}
@@ -167,7 +167,7 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
               />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-start">
             <button type="button" aria-label="Open navigation" aria-expanded={mobileNavOpen} aria-haspopup="dialog" onClick={() => setMobileNavOpen(true)} className="flex size-9 items-center justify-center rounded-lg border border-card-border text-card-text hover:bg-card-hover lg:hidden">
               <FiMenu aria-hidden="true" />
             </button>
@@ -189,17 +189,17 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
             </button>
           </div>
         </header>
-        <main className={cn('min-w-0 flex-1 px-6 py-6 md:px-8', contained && 'flex min-h-0 flex-col overflow-hidden print:overflow-visible')}>
-          <div className="mb-6 flex shrink-0 flex-wrap items-start justify-between gap-3">
+        <main className={cn('min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6 md:px-8', contained && 'flex flex-col lg:min-h-0 lg:overflow-hidden print:overflow-visible')}>
+          <div className="mb-5 flex shrink-0 flex-wrap items-start justify-between gap-3 sm:mb-6">
             <div>
               {headerLead && <div className="mb-3">{headerLead}</div>}
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-surface-text">{title}</h1>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="min-w-0 text-xl font-semibold tracking-tight text-surface-text sm:text-2xl">{title}</h1>
                 {badge}
               </div>
               {subtitle && <p className="mt-1 text-sm text-surface-text-muted">{subtitle}</p>}
             </div>
-            {actions && <div className="flex flex-wrap items-center gap-2 print:hidden">{actions}</div>}
+            {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto print:hidden">{actions}</div>}
           </div>
           {children}
         </main>

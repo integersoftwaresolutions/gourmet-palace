@@ -27,7 +27,7 @@ import {
   priorityDetail,
   severityStatusLabel,
 } from '../lib/commandCenterHelpers'
-import { money } from '../lib/format'
+import { dateRange, money, publishedDateTime } from '../lib/format'
 import { useAppState } from '../context/useAppState'
 import { useAuth } from '../context/useAuth'
 
@@ -141,7 +141,7 @@ export function OverviewPage() {
             className="border-accent-border/40 bg-gradient-to-br from-card via-card to-accent-subtle/20"
             padding="lg"
           >
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-col items-start justify-between gap-4 xl:flex-row">
               <div className="min-w-0 flex-1">
                 <p className="font-display text-lg italic text-accent-subtle-text">
                   Your morning brief
@@ -150,19 +150,13 @@ export function OverviewPage() {
                   {briefHeadline(data, briefContent)}
                 </h2>
                 <p className="mt-2 text-xs text-card-text-muted">
-                  {brief?.publishedAt
-                    ? `Published ${new Date(brief.publishedAt).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        timeZone: 'America/Los_Angeles',
-                      })} PT`
-                    : 'Brief not published yet'}
+                  {brief?.publishedAt ? publishedDateTime(brief.publishedAt) : 'Brief not published yet'}
                   {' · dashboard'}
                   {brief?.emailStatus === 'sent' ? ' + email' : ''}
                   {brief?.status === 'PARTIAL' ? ' · partial snapshot' : ''}
                 </p>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
                 <Link to="/morning-brief">
                   <Button size="sm" variant="outline" shape="pill">
                     Full brief
@@ -176,13 +170,13 @@ export function OverviewPage() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_minmax(14rem,1.1fr)]">
+            <div className="mt-6 grid min-w-0 gap-4 break-words sm:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
               <div>
                 <p className="text-2xl font-semibold tabular-nums text-card-text">
                   {money(data.current.netMoney)}
                 </p>
                 <p className="mt-1 text-[10px] font-semibold tracking-[0.18em] text-card-text-faint uppercase">
-                  {isSingleDay || datePreset === 'yesterday' ? 'Yesterday' : data.range.label} ·{' '}
+                  {isSingleDay || datePreset === 'yesterday' ? formatPriorBusinessDay(data.range.to) : dateRange(data.range.from, data.range.to)} ·{' '}
                   {query.locationId ? 'Selected store' : 'All stores'}
                 </p>
               </div>

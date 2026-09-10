@@ -42,10 +42,10 @@ export function Table<T extends Record<string, unknown>>({
   return (
     <Card padding="none" className={cn('overflow-hidden', className)}>
       <div
-        className={cn('overflow-x-auto', bodyHeight && 'overflow-y-auto')}
+        className={cn('max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]', bodyHeight && 'overflow-y-auto')}
         style={bodyHeight ? { height: bodyHeight } : undefined}
       >
-        <table className="w-full min-w-[480px] border-collapse text-sm">
+        <table className="w-full min-w-[40rem] border-collapse text-sm sm:min-w-[480px]">
           <thead className={cn(bodyHeight && 'sticky top-0 z-10')}>
             <tr className="border-b border-card-border bg-card">
               {columns.map((col) => (
@@ -67,7 +67,7 @@ export function Table<T extends Record<string, unknown>>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-5 py-10 text-center text-card-text-muted"
+                  className="px-3 py-8 text-center text-card-text-muted sm:px-5 sm:py-10"
                 >
                   {emptyMessage}
                 </td>
@@ -86,7 +86,7 @@ export function Table<T extends Record<string, unknown>>({
                       <td
                         key={col.key}
                         className={cn(
-                          'px-5 py-3.5 text-card-text',
+                          'px-3 py-3 text-card-text sm:px-5 sm:py-3.5',
                           alignClass[col.align ?? 'left'],
                           col.className,
                         )}

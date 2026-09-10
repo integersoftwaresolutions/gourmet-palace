@@ -8,6 +8,7 @@ import { integrationsApi, type ConnectionRecord } from '../../lib/api'
 import { asyncMessage } from '../../lib/asyncError'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { useAppState } from '../../context/useAppState'
+import { dateRange } from '../../lib/format'
 
 function toBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -143,7 +144,7 @@ export function AdministrationIntegration() {
             if (result.status === 'NO_DATA') return `${label}: no daily data returned`
             return `${label}: failed`
           })
-          results.push(`${loc.name} (${data.range.from} to ${data.range.to}): ${details.join('; ')}.`)
+          results.push(`${loc.name} (${dateRange(data.range.from, data.range.to)}): ${details.join('; ')}.`)
           for (const [source, error] of Object.entries(data.errors)) failures.push(`${loc.name} ${source.toUpperCase()}: ${error}`)
         } catch (e) {
           failures.push(`${loc.name}: ${asyncMessage(e, 'Google sync failed')}`)
@@ -235,7 +236,7 @@ export function AdministrationIntegration() {
 
         <Card title="Square historical backfill · bounded and resumable">
           <p className="text-sm text-card-text-muted">Import a client-approved historical window one business day at a time through the same canonical/reconciliation path as live sync. Complete dates are skipped on rerun; Partial/Failed dates can safely resume without duplicate provider orders.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-[16rem_1fr_1fr_auto]">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-[16rem_1fr_1fr_auto]">
             <div>
               <p className="mb-1 text-xs text-card-text-muted">Location</p>
               <Select value={backfillLoc} onChange={setBackfillLoc} placeholder="Select location" options={locations.filter((l) => l.status === 'active').map((l) => ({ value: l.id, label: l.name }))} />
@@ -250,7 +251,7 @@ export function AdministrationIntegration() {
         <Card title="Toast historical export · one-time only">
           <p className="text-sm text-card-text-muted">Toast is not a live V1 connector. Upload the client export once; the original file is retained unchanged in private storage and imported into provider-neutral canonical history.</p>
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div className="w-64">
+            <div className="w-full sm:w-64">
               <p className="mb-1 text-xs text-card-text-muted">Canonical location</p>
               <Select value={toastLoc} onChange={setToastLoc} options={locations.filter((l) => l.status === 'active').map((l) => ({ value: l.id, label: l.name }))} />
             </div>

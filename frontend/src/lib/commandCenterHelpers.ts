@@ -1,4 +1,5 @@
 import type { AlertRecord, DashboardData, DashboardPriority } from '../lib/api'
+import { businessDate, dateRange, relativeAction } from './format'
 
 export function firstName(fullName: string | undefined): string {
   if (!fullName?.trim()) return 'there'
@@ -6,18 +7,11 @@ export function firstName(fullName: string | undefined): string {
 }
 
 export function formatHeaderDate(now = new Date()): string {
-  return now.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  })
+  return businessDate(now)
 }
 
 export function formatPriorBusinessDay(dateStr: string): string {
-  const d = new Date(`${dateStr}T12:00:00Z`)
-  const weekday = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
-  const monthDay = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  return `${weekday} ${monthDay}`
+  return businessDate(dateStr)
 }
 
 export function comparisonWeekdayLabel(dateStr: string): string {
@@ -26,16 +20,9 @@ export function comparisonWeekdayLabel(dateStr: string): string {
   return days[d.getUTCDay()] ?? 'PRIOR'
 }
 
-/** Short range for helper copy, e.g. "Aug 29–31" or "Aug 31". */
+/** Compact absolute comparison range, e.g. "1–10 Sep 2026". */
 export function formatComparisonRangeLabel(range: { from: string; to: string }): string {
-  const fmt = (s: string) =>
-    new Date(`${s}T12:00:00Z`).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC',
-    })
-  if (range.from === range.to) return fmt(range.from)
-  return `${fmt(range.from)}–${fmt(range.to)}`
+  return dateRange(range.from, range.to)
 }
 
 /**
@@ -97,14 +84,8 @@ export function alertLocationLine(
 ): string {
   const id = typeof alert.locationId === 'object' && alert.locationId ? String(alert.locationId._id) : String(alert.locationId || '')
   const name = id ? locationNames.get(id) : (typeof alert.locationId === 'object' ? alert.locationId?.name : null)
-  const opened = alert.createdAt
-    ? new Date(alert.createdAt).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      })
-    : null
-  const parts = [name, opened ? `opened ${opened}` : null].filter(Boolean)
+  const opened = alert.createdAt ? relativeAction(alert.createdAt, 'Opened') : null
+  const parts = [name, opened].filter(Boolean)
   return parts.join(' · ') || 'Organization scope'
 }
 

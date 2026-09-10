@@ -4,8 +4,7 @@ import { QueryState, DualPanelSkeleton, KpiRowSkeleton } from '../components/que
 import { Button, Card, KpiCard, Pill } from '../components/ui'
 import { reportsApi, type ReportData, type ReportScorecard } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { money, ratioPercent } from '../lib/format'
-import { formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { businessDate, dateRange, generalDate, generatedDateTime, money, ratioPercent } from '../lib/format'
 import { useAppState } from '../context/useAppState'
 
 function locName(id: ReportScorecard['locationId']) {
@@ -31,7 +30,7 @@ export function ReportingCenter() {
       title="Executive Reporting Center"
       subtitle={
         report
-          ? `${formatPriorBusinessDay(report.range.from)} → ${formatPriorBusinessDay(report.range.to)} · CSV and print-ready canonical reporting`
+          ? `${dateRange(report.range.from, report.range.to)} · CSV and print-ready canonical reporting`
           : 'Owner/Admin CSV and print-ready canonical reporting'
       }
       activeNav="reporting"
@@ -66,6 +65,7 @@ export function ReportingCenter() {
           const categoryRows = Object.entries(d.invoices.categorySpend || {}).sort((a, b) => b[1] - a[1]).slice(0, 8)
           return (
             <div className="report-print space-y-5">
+              <p className="text-xs text-card-text-faint print:text-card-text-muted">{generatedDateTime(d.generatedAt)}</p>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <KpiCard label="Net sales" value={money(d.performance.current.netMoney)} meta={d.performance.dataStatus} />
                 <KpiCard label="Orders" value={String(d.performance.current.orderCount ?? 'Unavailable')} meta="Completed canonical orders" />
@@ -80,7 +80,7 @@ export function ReportingCenter() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill tone={d.brief.status === 'COMPLETE' ? 'success' : 'warning'} variant="outline" size="sm">{d.brief.status}</Pill>
-                      <span className="text-xs text-card-text-muted">{d.brief.businessDate} · revision {d.brief.revision}</span>
+                      <span className="text-xs text-card-text-muted">{businessDate(d.brief.businessDate)} · Revision {d.brief.revision}</span>
                     </div>
                     <p className="text-sm text-card-text">{String(briefContent.headline || 'Brief available')}</p>
                     {priorities.length > 0 && (
@@ -124,7 +124,7 @@ export function ReportingCenter() {
                       <div key={`${locName(row.locationId)}-${row.businessDate}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border py-2 last:border-0">
                         <div>
                           <p className="text-sm font-medium text-card-text">{locName(row.locationId)}</p>
-                          <p className="text-xs text-card-text-muted">{row.businessDate} · coverage {row.coverage}%</p>
+                          <p className="text-xs text-card-text-muted">{businessDate(row.businessDate)} · coverage {row.coverage}%</p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold text-card-text">{row.score == null ? 'Unavailable' : row.score.toFixed(1)}</p>
@@ -178,7 +178,7 @@ export function ReportingCenter() {
                         <div key={`${row.description}-${row.effectiveDate}-${i}`} className="flex justify-between gap-2 border-b border-card-border py-2 last:border-0">
                           <div>
                             <p className="text-sm text-card-text">{row.description}</p>
-                            <p className="text-xs text-card-text-muted">{row.effectiveDate} · {money(row.previousUnitPrice)} → {money(row.unitPrice)}</p>
+                            <p className="text-xs text-card-text-muted">{generalDate(row.effectiveDate)} · {money(row.previousUnitPrice)} → {money(row.unitPrice)}</p>
                           </div>
                           <p className="text-sm font-semibold text-card-text">{pctDelta(row.changePct * 100)}</p>
                         </div>
@@ -244,7 +244,7 @@ export function ReportingCenter() {
                       <div key={String(row._id || i)} className="flex justify-between gap-2 border-b border-card-border py-2 last:border-0">
                         <div>
                           <p className="text-sm text-card-text">{typeof row.locationId === 'object' && row.locationId ? row.locationId.name : 'Location'}</p>
-                          <p className="text-xs text-card-text-muted">Week {row.weekStart} · {row.status}</p>
+                          <p className="text-xs text-card-text-muted">Week {businessDate(row.weekStart)} · {row.status}</p>
                         </div>
                         <p className="text-sm font-semibold text-card-text">{money(row.expectedMoney)}</p>
                       </div>

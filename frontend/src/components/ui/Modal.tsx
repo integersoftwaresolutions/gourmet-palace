@@ -94,7 +94,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex cursor-pointer items-center justify-center bg-canvas/65 p-4"
+      className="fixed inset-0 z-50 flex cursor-pointer items-end justify-center bg-canvas/65 p-0 sm:items-center sm:p-4"
       onMouseDown={onScrimClick}
       role="presentation"
     >
@@ -105,12 +105,12 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         className={cn(
-          'w-full cursor-auto rounded-2xl border border-card-border bg-card shadow-xl',
+          'max-h-[92dvh] w-full cursor-auto overflow-y-auto rounded-t-2xl border border-card-border bg-card shadow-xl sm:max-h-[90dvh] sm:rounded-2xl',
           sizeClasses[size],
           className,
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-card-border px-6 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-card-border px-4 py-4 sm:gap-4 sm:px-6">
           <div>
             <h2
               id={titleId}
@@ -134,10 +134,10 @@ export function Modal({
           </button>
         </div>
 
-        {children && <div className="px-6 py-4 text-card-text">{children}</div>}
+        {children && <div className="px-4 py-4 text-card-text sm:px-6">{children}</div>}
 
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-card-border px-6 py-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-card-border px-4 py-4 sm:px-6">
             {footer}
           </div>
         )}

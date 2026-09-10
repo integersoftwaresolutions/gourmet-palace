@@ -6,7 +6,7 @@ import { Button, Card, Input, Pill, Select } from '../../components/ui'
 import { settingsApi, systemApi } from '../../lib/api'
 import { asyncMessage } from '../../lib/asyncError'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
-import { dateTime } from '../../lib/format'
+import { businessDate, generalDate, syncedTime } from '../../lib/format'
 import { useAppState } from '../../context/useAppState'
 
 export function AdministrationSystemAndThresholds() {
@@ -118,8 +118,8 @@ export function AdministrationSystemAndThresholds() {
           <Button className="mt-5" onClick={() => void save()}>Save new effective version</Button>
         </Card>
         <Card title="Configuration version history">
-          <div className="max-h-80 overflow-auto">
-            <table className="w-full text-left text-sm">
+          <div className="max-h-80 max-w-full overflow-auto overscroll-x-contain">
+            <table className="w-full min-w-[42rem] text-left text-sm">
               <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-card-border text-xs uppercase text-card-text-faint">
                   <th className="py-2">Effective</th>
@@ -131,7 +131,7 @@ export function AdministrationSystemAndThresholds() {
               <tbody>
                 {(settings?.history || []).slice(0, 100).map((row, i) => (
                   <tr key={String(row._id || i)} className="border-b border-card-border last:border-0">
-                    <td className="py-2 text-card-text-muted">{dateTime(String(row.effectiveFrom || ''))}</td>
+                    <td className="py-2 text-card-text-muted">{generalDate(String(row.effectiveFrom || '').slice(0, 10))}</td>
                     <td className="py-2 text-card-text-muted">{row.locationId ? locations.find((l) => l.id === String(row.locationId))?.name || String(row.locationId) : 'Organization default'}</td>
                     <td className="py-2 font-medium text-card-text">{String(row.key || '')}</td>
                     <td className="max-w-xl py-2 font-mono text-xs text-card-text-muted">{JSON.stringify(row.value)}</td>
@@ -146,10 +146,10 @@ export function AdministrationSystemAndThresholds() {
           <Card title="Connector health">
             <div className="space-y-2">
               {connections.length === 0 ? <p className="text-sm text-card-text-muted">No external connector is configured.</p> : connections.map((c) => (
-                <div key={c._id} className="flex items-start justify-between border-b border-card-border py-2 last:border-0">
+                <div key={c._id} className="flex flex-wrap items-start justify-between gap-2 border-b border-card-border py-2 last:border-0">
                   <div>
                     <p className="text-sm font-medium text-card-text capitalize">{c.provider}</p>
-                    <p className="text-xs text-card-text-muted">Last success {dateTime(c.lastSuccessAt)}</p>
+                    <p className="text-xs text-card-text-muted">{syncedTime(c.lastSuccessAt)}</p>
                     {c.lastError ? <p className="mt-1 text-xs text-danger-subtle-text">{c.lastError}</p> : null}
                   </div>
                   <Pill tone={c.status === 'READY' ? 'success' : c.status === 'PARTIAL' ? 'warning' : 'danger'} variant="outline">{c.status}</Pill>
@@ -160,10 +160,10 @@ export function AdministrationSystemAndThresholds() {
           <Card title="Recent jobs">
             <div className="max-h-80 space-y-2 overflow-y-auto">
               {jobs.slice(0, 30).map((j, i) => (
-                <div key={String(j._id || i)} className="flex items-center justify-between border-b border-card-border py-2">
+                <div key={String(j._id || i)} className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border py-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-card-text">{String(j.jobType || 'job')} · {String(j.source || '')}</p>
-                    <p className="text-xs text-card-text-muted">{String(j.businessDate || '')} · attempts {String(j.attempts || 0)}</p>
+                    <p className="text-xs text-card-text-muted">{businessDate(j.businessDate)} · attempts {String(j.attempts || 0)}</p>
                     {j.error ? <p className="mt-1 truncate text-xs text-danger-subtle-text" title={String(j.error)}>{String(j.error)}</p> : null}
                   </div>
                   <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function AdministrationSystemAndThresholds() {
             {recon.length === 0 ? <p className="text-sm text-card-text-muted">No current reconciliation exception is recorded.</p> : recon.map((r, i) => (
               <div key={String(r._id || i)} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-card-border p-3">
                 <div>
-                  <p className="text-sm font-medium text-card-text">{String(r.businessDate)} · {String(r.dataStatus)}</p>
+                  <p className="text-sm font-medium text-card-text">{businessDate(r.businessDate)} · {String(r.dataStatus)}</p>
                   <pre className="mt-1 max-w-3xl overflow-auto text-[11px] text-card-text-faint">{JSON.stringify(r.reconciliation || {}, null, 2)}</pre>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => void rerun(r)}>Recalculate</Button>

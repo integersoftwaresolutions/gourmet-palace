@@ -5,8 +5,7 @@ import { CommandCenterMetric } from '../components/command-center/CommandCenterM
 import { Card, Pill } from '../components/ui'
 import { analyticsApi, type PresenceData } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { money } from '../lib/format'
-import { formatPriorBusinessDay } from '../lib/commandCenterHelpers'
+import { dateRange, money, updatedTime } from '../lib/format'
 import { useAppState } from '../context/useAppState'
 
 function deltaLabel(value: number | null | undefined) {
@@ -42,7 +41,7 @@ export function OnlinePresenceSeoGrowth() {
       title="SEO & Growth"
       subtitle={
         data
-          ? `${formatPriorBusinessDay(data.range.from)} → ${formatPriorBusinessDay(data.range.to)} · GA4, Search Console, GBP and direct orders`
+          ? `${dateRange(data.range.from, data.range.to)} · GA4, Search Console, GBP and direct orders`
           : 'GA4, Search Console, GBP and direct-order evidence'
       }
       activeNav="presence"
@@ -114,7 +113,7 @@ export function OnlinePresenceSeoGrowth() {
                         </div>
                         <p>{row.recommendation}</p>
                         <p className="mt-1 text-xs text-card-text-faint">
-                          Period {row.period.from} → {row.period.to}
+                          Period {dateRange(row.period.from, row.period.to)}
                         </p>
                       </li>
                     ))}
@@ -130,7 +129,7 @@ export function OnlinePresenceSeoGrowth() {
                   <CoverageRow label="Queries & pages" status={s.gsc.queriesPagesStatus} detail="Unavailable — V1 stores Search Console date totals, not query/page rows" />
                   <p className="pt-2 text-xs text-card-text-faint">
                     Average position is Search Console performance, not a third-party exact rank tracker.
-                    {s.freshnessAt ? ` · Freshness ${new Date(s.freshnessAt).toLocaleString()}` : ''}
+                    {s.freshnessAt ? ` · ${updatedTime(s.freshnessAt)}` : ''}
                   </p>
                 </div>
               </Card>

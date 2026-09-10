@@ -52,7 +52,7 @@ export function Tabs({
         aria-label={ariaLabel}
         onKeyDown={onKeyDown}
         className={cn(
-          'inline-flex items-center gap-1 rounded-full border border-card-border bg-card-subtle p-1',
+          'flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-card-border bg-card-subtle p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
           className,
         )}
       >
@@ -69,7 +69,7 @@ export function Tabs({
               tabIndex={active ? 0 : -1}
               onClick={() => !item.disabled && onChange(item.id)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold tracking-wider uppercase transition-colors',
+                'inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold tracking-wider whitespace-nowrap uppercase transition-colors',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ring',
                 'disabled:cursor-not-allowed disabled:opacity-40',
                 active
@@ -92,7 +92,7 @@ export function Tabs({
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       className={cn(
-        'flex items-center gap-6 border-b border-surface-border',
+        'flex max-w-full items-center gap-4 overflow-x-auto border-b border-surface-border sm:gap-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
     >
@@ -109,7 +109,7 @@ export function Tabs({
             tabIndex={active ? 0 : -1}
             onClick={() => !item.disabled && onChange(item.id)}
             className={cn(
-              'relative -mb-px inline-flex items-center gap-2 pb-3 text-xs font-semibold tracking-widest uppercase transition-colors',
+              'relative -mb-px inline-flex shrink-0 items-center gap-2 pb-3 text-xs font-semibold tracking-widest whitespace-nowrap uppercase transition-colors',
               'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ring',
               'disabled:cursor-not-allowed disabled:opacity-40',
               active

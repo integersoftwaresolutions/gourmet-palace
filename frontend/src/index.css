@@ -59,3 +59,52 @@
     outline-offset: 2px;
   }
 }
+
+/* gp-responsive-datetime-verdict-v1
+   App-wide mobile hardening. Shared components still carry the primary layout
+   behavior; these rules are the safety net for long API text and browser quirks. */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body, #root {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body { overflow-x: hidden; }
+
+  :where(img, video, canvas) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  :where(input, select, textarea, button) { max-width: 100%; }
+
+  :where(pre, code) { overflow-wrap: anywhere; }
+}
+
+@media (max-width: 639px) {
+  /* 16px avoids iOS/Safari zooming into focused form fields. */
+  :where(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+    font-size: 16px;
+  }
+
+  /* Long IDs, vendor names, API errors and report copy must wrap, not widen the page. */
+  :where(main p, main li, main td, main th, [role='dialog'] p, [role='dialog'] li) {
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  /* Touch targets remain usable even when a component requests a compact size. */
+  :where(button, a[href], [role='button'], [role='tab']) {
+    min-height: 40px;
+  }
+
+  /* Recharts occasionally reports an intrinsic SVG width before its observer settles. */
+  .recharts-responsive-container,
+  .recharts-wrapper,
+  .recharts-surface {
+    max-width: 100% !important;
+  }
+}

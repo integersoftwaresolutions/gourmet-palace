@@ -5,7 +5,7 @@ import { QueryState, DualPanelSkeleton } from '../components/query'
 import { Card, Pill } from '../components/ui'
 import { vendorsApi } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { money } from '../lib/format'
+import { generalDate, money } from '../lib/format'
 import { useAppState } from '../context/useAppState'
 
 export function OperationsVendorDetail() {
@@ -59,7 +59,7 @@ export function OperationsVendorDetail() {
                     <div key={invoice._id} className="flex justify-between gap-2 border-b border-card-border py-2 last:border-0">
                       <div>
                         <p className="text-sm text-card-text">{invoice.invoiceNumber || invoice._id}</p>
-                        <p className="text-xs text-card-text-muted">{invoice.invoiceDate}</p>
+                        <p className="text-xs text-card-text-muted">{generalDate(invoice.invoiceDate)}</p>
                       </div>
                       <p className="text-sm font-semibold text-card-text">{money(invoice.totalMoney)}</p>
                     </div>
@@ -88,7 +88,7 @@ export function OperationsVendorDetail() {
                     <div>
                       <p className="text-sm text-card-text">{String(row.description)}</p>
                       <p className="text-xs text-card-text-muted">
-                        {String(row.effectiveDate)} · {money(row.previousUnitPrice)} → {money(row.unitPrice)}
+                        {generalDate(row.effectiveDate)} · {money(row.previousUnitPrice)} → {money(row.unitPrice)}
                       </p>
                     </div>
                     <Pill tone={Number(row.changePct) >= 0.1 ? 'warning' : 'neutral'} variant="outline" size="sm">

@@ -39,7 +39,7 @@ export function PieChart({
   showLegend = true,
 }: PieChartProps) {
   return (
-    <div className={cn('w-full', className)} style={{ height }}>
+    <div className={cn('min-w-0 w-full overflow-hidden', className)} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <RechartsPieChart>
           <Pie

@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { cn } from '../../../lib/cn'
+import { chartAxisDate, chartTooltipDate } from '../../../lib/format'
 import {
   chartAxisTick,
   chartColors,
@@ -39,7 +40,7 @@ export function BarChart({
   showLegend = true,
 }: BarChartProps) {
   return (
-    <div className={cn('w-full', className)} style={{ height }}>
+    <div className={cn('min-w-0 w-full overflow-hidden', className)} style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <RechartsBarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           {showGrid && (
@@ -54,6 +55,8 @@ export function BarChart({
             tick={chartAxisTick}
             axisLine={false}
             tickLine={false}
+            tickFormatter={chartAxisDate}
+            minTickGap={18}
           />
           <YAxis
             tick={chartAxisTick}
@@ -63,6 +66,7 @@ export function BarChart({
           />
           <Tooltip
             contentStyle={chartTooltipStyle}
+            labelFormatter={chartTooltipDate}
             cursor={{ fill: chartColors.cursor }}
           />
           {showLegend && (

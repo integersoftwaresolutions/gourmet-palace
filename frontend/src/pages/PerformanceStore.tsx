@@ -15,7 +15,7 @@ import {
 import { chartColors } from '../components/ui/charts/chartTheme'
 import { analyticsApi } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { freshnessTime, money } from '../lib/format'
+import { money, updatedTime } from '../lib/format'
 import { comparisonDeltaLabel, formatComparisonRangeLabel, formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
 
@@ -55,7 +55,7 @@ export function PerformanceStore() {
   const storeName = selectedLocationId === 'all' ? 'All locations' : selectedLocation?.name || 'Location'
   const score = data?.locationScores[0]
   const freshness = data?.freshnessAt
-    ? `Fresh · ${freshnessTime(data.freshnessAt)} PT`
+    ? updatedTime(data.freshnessAt)
     : 'Source freshness unavailable'
   const vsLabel = data
     ? comparisonDeltaLabel({
@@ -98,7 +98,7 @@ export function PerformanceStore() {
       subtitle={
         data
           ? `Data through ${formatPriorBusinessDay(data.range.to)}${
-              data.freshnessAt ? ` · refreshed ${freshnessTime(data.freshnessAt)} PT` : ' · no source refresh recorded'
+              data.freshnessAt ? ` · ${updatedTime(data.freshnessAt)}` : ' · no source refresh recorded'
             }`
           : 'Sales, demand, channels, items and categories from canonical POS history'
       }
@@ -199,7 +199,21 @@ export function PerformanceStore() {
               {itemRows.length === 0 ? (
                 <p className="text-sm text-card-text-muted">No sold items are available in this scope.</p>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                  <div className="space-y-3 sm:hidden">
+                    {itemRows.map((row) => (
+                      <div key={row.name} className="min-w-0 rounded-lg border border-card-border p-3">
+                        <p className="break-words text-sm font-medium text-card-text">{row.name}</p>
+                        <p className="mt-1 break-words text-xs text-card-text-faint">{row.category || 'Uncategorized'}</p>
+                        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                          <div><dt className="text-xs text-card-text-muted">Units</dt><dd className="mt-1 tabular-nums">{row.units.toLocaleString()}</dd></div>
+                          <div><dt className="text-xs text-card-text-muted">Net sales</dt><dd className="mt-1 tabular-nums">{money(row.revenue)}</dd></div>
+                          <div className="col-span-2"><dt className="text-xs text-card-text-muted">Change</dt><dd className="mt-1"><TrendBadge value={row.changePct} /></dd></div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                <div className="hidden max-w-full overflow-x-auto overscroll-x-contain sm:block">
                   <table className="w-full min-w-[480px] text-sm">
                     <thead>
                       <tr className="border-b border-card-border text-left text-[11px] tracking-widest text-card-text-faint uppercase">
@@ -224,6 +238,7 @@ export function PerformanceStore() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </Card>
             <Card title={`Sales by daypart · ${formatPriorBusinessDay(data.range.to)}`}>

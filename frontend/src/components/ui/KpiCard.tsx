@@ -44,15 +44,15 @@ export function KpiCard({
       padding="md"
       {...cardProps}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <p className="text-[11px] font-medium tracking-widest text-card-text-faint uppercase">
           {label}
         </p>
         {pill}
       </div>
 
-      <div className="mt-3 flex items-baseline justify-between gap-3">
-        <span className="text-2xl font-semibold tracking-tight text-card-text">
+      <div className="mt-3 flex min-w-0 flex-wrap items-baseline justify-between gap-3">
+        <span className="min-w-0 break-words text-xl font-semibold tracking-tight text-card-text sm:text-2xl">
           {value}
         </span>
         {delta && (

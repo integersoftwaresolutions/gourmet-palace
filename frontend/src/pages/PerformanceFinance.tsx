@@ -49,14 +49,6 @@ function foodCostPill(d: FinanceData) {
   return `Within ${band} target`
 }
 
-function shortDate(iso: string) {
-  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
 function initialsLine(rows: Array<{ initials: string; locationName: string }>) {
   if (!rows.length) return 'Unavailable'
   return rows.map((row) => row.initials || row.locationName).join(', ')
@@ -87,7 +79,7 @@ export function PerformanceFinance() {
     const rows = data?.dailyTrend || []
     const slice = rows.length > 10 ? rows.slice(-10) : rows
     return slice.map((row) => ({
-      date: shortDate(row.businessDate),
+      date: row.businessDate,
       netSales: Math.round(row.netMoney / 100),
       estProfit: Math.round(row.estimatedProfit / 100),
     }))

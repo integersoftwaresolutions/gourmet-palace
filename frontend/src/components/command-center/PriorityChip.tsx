@@ -17,13 +17,13 @@ export function PriorityChip({ severity, title, detail, className }: PriorityChi
   return (
     <div
       className={cn(
-        'flex items-center gap-2.5 rounded-lg bg-card-subtle px-3 py-2.5',
+        'grid min-w-0 grid-cols-[0.5rem_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 rounded-lg bg-card-subtle px-3 py-2.5',
         className,
       )}
     >
-      <span className={cn('size-2 shrink-0 rounded-full', dotClass[severity])} aria-hidden />
-      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-card-text">{title}</p>
-      <p className="max-w-[55%] shrink-0 truncate text-right text-xs text-card-text-muted">{detail}</p>
+      <span className={cn('mt-1.5 size-2 rounded-full', dotClass[severity])} aria-hidden />
+      <p className="min-w-0 break-words text-sm font-semibold text-card-text">{title}</p>
+      <p className="col-start-2 min-w-0 break-words text-xs leading-relaxed text-card-text-muted">{detail}</p>
     </div>
   )
 }

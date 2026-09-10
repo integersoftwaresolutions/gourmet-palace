@@ -7,18 +7,9 @@ import { Card, LineAreaChart, Pill } from '../components/ui'
 import { chartColors } from '../components/ui/charts/chartTheme'
 import { analyticsApi, type ForecastStatus, type ForecastThisWeek } from '../lib/api'
 import { useAsyncResource } from '../hooks/useAsyncResource'
-import { money } from '../lib/format'
+import { forecastDay, money } from '../lib/format'
 import { formatPriorBusinessDay } from '../lib/commandCenterHelpers'
 import { useAppState } from '../context/useAppState'
-
-function weekdayLabel(iso: string) {
-  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-}
 
 function weekdayName(iso: string) {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', {
@@ -73,7 +64,7 @@ export function PerformanceForecast() {
   const chartRows = useMemo(
     () =>
       (week?.days || []).map((day) => ({
-        date: weekdayLabel(day.businessDate),
+        date: day.businessDate,
         expected: day.expectedMoney == null ? null : Math.round(day.expectedMoney / 100),
         low: day.lowMoney == null ? null : Math.round(day.lowMoney / 100),
         high: day.highMoney == null ? null : Math.round(day.highMoney / 100),
@@ -180,7 +171,7 @@ export function PerformanceForecast() {
                       {thisWeek.days.map((day) => (
                         <div key={day.businessDate} className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-sm text-card-text">{weekdayLabel(day.businessDate)}</p>
+                            <p className="text-sm text-card-text">{forecastDay(day.businessDate)}</p>
                             <p className="text-xs text-card-text-muted">
                               {day.expectedMoney == null
                                 ? `${day.comparableCount} comparable${day.comparableCount === 1 ? '' : 's'} · withheld`

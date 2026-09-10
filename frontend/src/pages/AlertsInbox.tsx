@@ -8,6 +8,7 @@ import { asyncMessage } from '../lib/asyncError'
 import { useAsyncResource } from '../hooks/useAsyncResource'
 import { money } from '../lib/format'
 import { useAppState } from '../context/useAppState'
+import { relativeAction } from '../lib/format'
 import { useAuth } from '../context/useAuth'
 import {
   applyEvidenceScope,
@@ -84,7 +85,7 @@ export function AlertsInbox() {
   return (
     <AppShell title="Alerts" subtitle="Open exceptions, assignment, notes and lifecycle" activeNav="alerts">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="w-44">
+        <div className="w-full sm:w-44">
           <Select value={status} onChange={setStatus} options={[
             { value: 'OPEN', label: 'Open' },
             { value: 'ACKNOWLEDGED', label: 'Acknowledged' },
@@ -114,15 +115,15 @@ export function AlertsInbox() {
                   : null
                 return (
                 <div key={alert._id} className="rounded-lg border border-card-border bg-card p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
+                  <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0 break-words xl:flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Pill tone={alert.severity === 'critical' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'neutral'} variant="outline">{alert.severity}</Pill>
                         <Pill tone="neutral" variant="outline">{alert.status}</Pill>
                         <span className="text-sm font-semibold text-card-text">{alert.title}</span>
                       </div>
                       <p className="mt-2 text-sm text-card-text-muted">{alert.detail}</p>
-                      <p className="mt-1 text-xs text-card-text-faint">{locName(alert.locationId)} · {alert.type} · opened {new Date(alert.createdAt).toLocaleString()}</p>
+                      <p className="mt-1 text-xs text-card-text-faint">{locName(alert.locationId)} · {alert.type} · {relativeAction(alert.createdAt, 'Opened')}</p>
                       {(actual || normal || delta) && (
                         <p className="mt-2 text-xs text-card-text-muted">
                           {[actual ? `Actual ${actual}` : null, normal ? `Normal ${normal}` : null, delta ? `Delta ${delta}` : null].filter(Boolean).join(' · ')}
@@ -149,13 +150,13 @@ export function AlertsInbox() {
                         {(alert.notes || []).map((note, i) => (
                           <p key={`${alert._id}-note-${i}`} className="text-xs text-card-text-muted">
                             Note · {note.text}
-                            {note.createdAt ? ` · ${new Date(note.createdAt).toLocaleString()}` : ''}
+                            {note.createdAt ? ` · ${relativeAction(note.createdAt, 'Added')}` : ''}
                           </p>
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-card-text-faint">Assignee ? {assigneeName || users.find((user) => user.id === assigneeId)?.name || 'Unassigned'}</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={() => { setActionError(''); setDialog({ alert, kind: 'note' }) }}>Add note</Button>
                       {isAdmin && <Button size="sm" variant="outline" onClick={() => { setActionError(''); setAssigneeDraft(assigneeId); setDialog({ alert, kind: 'assign' }) }}>Add assignee</Button>}
                       <Button size="sm" variant="outline" onClick={() => { setActionError(''); setStatusDraft(''); setDialog({ alert, kind: 'status' }) }}>Change status</Button>
