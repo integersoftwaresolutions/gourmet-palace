@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { FiPlus } from 'react-icons/fi'
-import { useNavigate } from 'react-router-dom'
+import { AdminTabs } from '../../components/layout/SectionTabs'
 import { AppShell } from '../../components/layout/AppShell'
 import { QueryError, QueryState, TableSkeleton } from '../../components/query'
 import {
@@ -10,7 +10,6 @@ import {
   Pill,
   Select,
   Table,
-  Tabs,
   type TableColumn,
 } from '../../components/ui'
 import {
@@ -27,7 +26,6 @@ import { useAsyncResource } from '../../hooks/useAsyncResource'
 type UserRow = AdminUser & Record<string, unknown>
 
 export function AdminPage() {
-  const navigate = useNavigate()
   const { data, error, isLoading, isRefreshing, reload } = useAsyncResource(
     async () => {
       const [usersRes, locsRes] = await Promise.all([usersApi.list(), locationsApi.list()])
@@ -140,23 +138,7 @@ export function AdminPage() {
         </Pill>
       }
     >
-      <Tabs
-        variant="underline"
-        value="users"
-        onChange={(id) => {
-          if (id === 'users') navigate('/admin')
-          if (id === 'locations') navigate('/admin/locations')
-          if (id === 'integrations') navigate('/admin/integrations')
-          if (id === 'system') navigate('/admin/system')
-        }}
-        items={[
-          { id: 'users', label: 'Users' },
-          { id: 'locations', label: 'Locations' },
-          { id: 'integrations', label: 'Integrations' },
-          { id: 'system', label: 'System & thresholds' },
-        ]}
-        className="mb-6"
-      />
+      <div className="mb-6"><AdminTabs value="users" /></div>
 
       {actionError && (
         <QueryError message={actionError} className="mb-4" />

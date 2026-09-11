@@ -8,3 +8,4 @@ backend/storage
 !**/.env.example
 !.env.vercel.example
 docs
+.env.vercel.example

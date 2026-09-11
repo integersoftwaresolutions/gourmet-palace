@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const env = require('../../config/env');
 const ApiError = require('../../utils/ApiError');
 const { signedFetch } = require('../../services/awsSigV4');
@@ -11,9 +12,7 @@ function encodePath(key) {
   return String(key).split('/').map(encodeURIComponent).join('/');
 }
 
-function s3Config() {
-  return env.storage || {};
-}
+function s3Config() { return env.storage || {}; }
 
 function s3Url(key) {
   const cfg = s3Config();
@@ -33,25 +32,16 @@ function s3Url(key) {
 function explicitS3Credentials() {
   const cfg = s3Config();
   if (!cfg.accessKeyId || !cfg.secretAccessKey) return undefined;
-  return {
-    accessKeyId: cfg.accessKeyId,
-    secretAccessKey: cfg.secretAccessKey,
-    sessionToken: cfg.sessionToken || '',
-  };
+  return { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey, sessionToken: cfg.sessionToken || '' };
 }
 
 async function s3Request(method, key, buffer = Buffer.alloc(0)) {
   const cfg = s3Config();
-  const response = await signedFetch({
-    service: 's3',
-    region: cfg.region || env.aws.region || 'us-west-2',
-    url: s3Url(key),
-    method,
-    body: buffer,
+  return signedFetch({
+    service: 's3', region: cfg.region || env.aws.region || 'us-west-2', url: s3Url(key), method, body: buffer,
     headers: method === 'PUT' ? { 'content-type': 'application/octet-stream' } : {},
     credentials: explicitS3Credentials(),
   });
-  return response;
 }
 
 async function s3Put(key, buffer) {
@@ -79,9 +69,41 @@ function safeRelativeKey(organizationId, key) {
   return `${org}/${cleaned}`;
 }
 
+function gridfsBucket() {
+  if (!mongoose.connection.db) throw new ApiError(503, 'MongoDB storage is not ready');
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'gpPrivateFiles' });
+}
+
+async function mongoPut(relative, buffer) {
+  const bucket = gridfsBucket();
+  return new Promise((resolve, reject) => {
+    const stream = bucket.openUploadStream(relative, {
+      metadata: { private: true, key: relative, createdAt: new Date() },
+    });
+    stream.once('error', reject);
+    stream.once('finish', () => resolve(`mongo:${String(stream.id)}`));
+    stream.end(buffer);
+  });
+}
+
+async function mongoGet(id) {
+  let objectId;
+  try { objectId = new mongoose.Types.ObjectId(String(id)); }
+  catch { throw new ApiError(404, 'Stored file not found'); }
+  const bucket = gridfsBucket();
+  const chunks = [];
+  return new Promise((resolve, reject) => {
+    const stream = bucket.openDownloadStream(objectId);
+    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.once('error', (err) => reject(err?.code === 'ENOENT' ? new ApiError(404, 'Stored file not found') : err));
+    stream.once('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
 async function put({ organizationId, key, buffer }) {
   if (!Buffer.isBuffer(buffer)) throw new ApiError(400, 'Private object content must be a Buffer');
   const relative = safeRelativeKey(organizationId, key);
+  if (s3Config().provider === 'mongo') return mongoPut(relative, buffer);
   if (s3Config().provider === 's3') return s3Put(relative, buffer);
   const absolute = path.join(base, relative);
   await fs.mkdir(path.dirname(absolute), { recursive: true });
@@ -91,16 +113,14 @@ async function put({ organizationId, key, buffer }) {
 
 async function get(ref) {
   const raw = String(ref || '');
+  if (raw.startsWith('mongo:')) return mongoGet(raw.slice(6));
   if (raw.startsWith('s3:')) return s3Get(raw.slice(3));
   const relative = raw.startsWith('local:') ? raw.slice(6) : raw;
   const normalized = path.normalize(relative).replace(/^([/\\])+/, '');
   const absolute = path.resolve(base, normalized);
   if (absolute !== base && !absolute.startsWith(`${base}${path.sep}`)) throw new ApiError(403, 'Invalid private object reference');
-  try {
-    return await fs.readFile(absolute);
-  } catch {
-    throw new ApiError(404, 'Stored file not found');
-  }
+  try { return await fs.readFile(absolute); }
+  catch { throw new ApiError(404, 'Stored file not found'); }
 }
 
 function sign(ref, expiresSeconds = 300) {
@@ -113,18 +133,12 @@ function sign(ref, expiresSeconds = 300) {
 function verify(token, exp, sig) {
   if (Number(exp) < Math.floor(Date.now() / 1000)) throw new ApiError(410, 'File link expired');
   let ref;
-  try {
-    ref = Buffer.from(token, 'base64url').toString('utf8');
-  } catch {
-    throw new ApiError(403, 'Invalid file token');
-  }
+  try { ref = Buffer.from(token, 'base64url').toString('utf8'); }
+  catch { throw new ApiError(403, 'Invalid file token'); }
   const expected = crypto.createHmac('sha256', env.fileSigningSecret || env.sessionSecret).update(`${ref}.${exp}`).digest();
   let got;
-  try {
-    got = Buffer.from(String(sig || ''), 'base64url');
-  } catch {
-    throw new ApiError(403, 'Invalid file signature');
-  }
+  try { got = Buffer.from(String(sig || ''), 'base64url'); }
+  catch { throw new ApiError(403, 'Invalid file signature'); }
   if (got.length !== expected.length || !crypto.timingSafeEqual(expected, got)) throw new ApiError(403, 'Invalid file signature');
   return ref;
 }

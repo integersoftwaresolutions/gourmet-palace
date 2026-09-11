@@ -1,3 +1,4 @@
+import { JobLogs } from './pages/admin/JobLogs'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminRoute } from './components/auth/AdminRoute'
 import { GuestRoute } from './components/auth/GuestRoute'
@@ -228,6 +229,7 @@ function App() {
               </AdminRoute>
             }
           />
+          <Route path="/admin/jobs" element={<AdminRoute><JobLogs /></AdminRoute>} />
           <Route path="/demo" element={<ComponentDemo />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

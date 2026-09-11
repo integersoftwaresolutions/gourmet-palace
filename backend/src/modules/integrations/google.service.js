@@ -1,3 +1,6 @@
+const { recordGoogleAttempt } = require('../../workers/googleAttempt');
+const SyncState = require('../../models/GoogleSyncState');
+const { withGoogleLock } = require('../../workers/googleLock');
 const Connection = require('../../models/Connection');
 const Location = require('../../models/Location');
 const SeoMetric = require('../../models/SeoMetric');
@@ -6,7 +9,7 @@ const JobRun = require('../../models/JobRun');
 const ApiError = require('../../utils/ApiError');
 const env = require('../../config/env');
 const secrets = require('../../services/providerSecrets');
-const { parseRange, addDays } = require('../../utils/dateRange');
+const { parseRange, addDays, todayUtc } = require('../../utils/dateRange');
 
 const GOOGLE_SCOPES = [
   'openid',
@@ -60,6 +63,7 @@ async function googleCallback(req, organizationId, code, state) {
   });
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
+    signal: AbortSignal.timeout(Number(env.providerHttpTimeoutMs) || 12000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
   });
@@ -104,6 +108,7 @@ async function refreshGoogle(conn, secret) {
   if (!secret.refreshToken) return { conn, secret };
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
+    signal: AbortSignal.timeout(Number(env.providerHttpTimeoutMs) || 12000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: env.google.clientId,
@@ -141,6 +146,7 @@ async function getGoogleAccessToken(organizationId) {
 async function googleFetch(token, url, options = {}) {
   const res = await fetch(url, {
     ...options,
+    signal: options.signal || AbortSignal.timeout(Number(env.providerHttpTimeoutMs) || 12000),
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(options.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
@@ -315,12 +321,11 @@ async function syncGsc({ token, organizationId, locationId, siteUrl, from, to })
   return byDate.size;
 }
 
-async function syncGbp({ token, organizationId, locationId, gbpLocationName, from, to }) {
-  let performanceError;
+async function syncGbpPerformance({ token, organizationId, locationId, gbpLocationName, from, to }) {
   const daily = await googleFetch(
     token,
     `https://businessprofileperformance.googleapis.com/v1/${gbpLocationName}:fetchMultiDailyMetricsTimeSeries?dailyMetrics=WEBSITE_CLICKS&dailyMetrics=CALL_CLICKS&dailyMetrics=BUSINESS_DIRECTION_REQUESTS&dailyMetrics=BUSINESS_IMPRESSIONS_DESKTOP_MAPS&dailyMetrics=BUSINESS_IMPRESSIONS_MOBILE_SEARCH&dailyRange.start_date.year=${from.slice(0, 4)}&dailyRange.start_date.month=${Number(from.slice(5, 7))}&dailyRange.start_date.day=${Number(from.slice(8, 10))}&dailyRange.end_date.year=${to.slice(0, 4)}&dailyRange.end_date.month=${Number(to.slice(5, 7))}&dailyRange.end_date.day=${Number(to.slice(8, 10))}`,
-  ).catch((err) => { performanceError = err; return null; });
+  );
 
   const byDate = new Map();
   for (const series of daily?.multiDailyMetricTimeSeries || []) {
@@ -347,13 +352,35 @@ async function syncGbp({ token, organizationId, locationId, gbpLocationName, fro
       status: metrics ? 'COMPLETE' : 'UNAVAILABLE',
     });
   }
+  return byDate.size;
+}
 
-  let pageToken;
+async function syncGbpReviews({ token, organizationId, locationId, gbpLocationName }) {
+  const state = await SyncState.findOne({ organizationId, locationId }).lean();
+  const saved = state?.reviews?.provider === gbpLocationName ? state.reviews : {};
+  const fullScan = !saved.lastFullAt || Date.now() - new Date(saved.lastFullAt).getTime() > 30 * 86400000;
+  const checkpoint = saved.checkpoint || { cutoff: fullScan ? null : saved.watermark, newest: saved.watermark || null, fullScan };
+  let pageToken = checkpoint.pageToken;
+  let reachedCutoff = false;
+  let pages = 0;
+  let reviewsImported = 0;
   do {
-    const q = new URLSearchParams({ pageSize: '50' });
+    const q = new URLSearchParams({ pageSize: '50', orderBy: 'updateTime desc' });
     if (pageToken) q.set('pageToken', pageToken);
-    const data = await googleFetch(token, `https://mybusiness.googleapis.com/v4/${gbpLocationName}/reviews?${q}`);
+    let data;
+    try { data = await googleFetch(token, `https://mybusiness.googleapis.com/v4/${gbpLocationName}/reviews?${q}`); }
+    catch (error) {
+      if (pageToken && error.status === 400) await SyncState.updateOne({ organizationId, locationId }, { $unset: { 'reviews.checkpoint': 1 } });
+      throw error;
+    }
+    pages += 1;
     for (const review of data.reviews || []) {
+      const updated = review.updateTime || review.createTime;
+      if (updated && checkpoint.cutoff && new Date(updated).getTime() < new Date(checkpoint.cutoff).getTime() - 86400000) {
+        reachedCutoff = true;
+        break;
+      }
+      if (updated && (!checkpoint.newest || new Date(updated) > new Date(checkpoint.newest))) checkpoint.newest = updated;
       const providerReviewId = String(review.reviewId || review.name || '').split('/').pop();
       if (!providerReviewId) continue;
       const star = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }[review.starRating] || Number(review.starRating) || null;
@@ -371,21 +398,63 @@ async function syncGbp({ token, organizationId, locationId, gbpLocationName, fro
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },
       );
+      reviewsImported += 1;
     }
-    pageToken = data.nextPageToken;
-  } while (pageToken);
-  if (performanceError) throw performanceError;
-  return byDate.size;
+    pageToken = reachedCutoff ? null : data.nextPageToken;
+    await SyncState.updateOne({ organizationId, locationId }, { $set: { reviews: {
+      provider: gbpLocationName,
+      watermark: pageToken ? saved.watermark : checkpoint.newest,
+      lastFullAt: !pageToken && checkpoint.fullScan ? new Date().toISOString() : saved.lastFullAt,
+      checkpoint: pageToken ? { ...checkpoint, pageToken } : null,
+    } } });
+  } while (pageToken && pages < 3);
+  return { reviewsImported, pages, hasMore: Boolean(pageToken) };
 }
 
-async function googleSync({ organizationId, locationId, preset = '7d', from, to }) {
+function uniqueGoogleRunKey({ organizationId, locationId, jobType, from = '', to = '' }) {
+  return `google:${jobType}:${organizationId}:${locationId}:${from}:${to}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function priorIdempotentResult(idempotencyKey, { retryIncomplete = false } = {}) {
+  if (!idempotencyKey) return null;
+  const existing = await JobRun.findOne({ idempotencyKey }).lean();
+  if (!existing) return null;
+  if (existing.status === 'COMPLETE') {
+    return { ...(existing.result || {}), skipped: true, skipReason: 'already_completed' };
+  }
+  if (!retryIncomplete && ['PARTIAL', 'UNAVAILABLE', 'FAILED'].includes(existing.status)) {
+    return { ...(existing.result || {}), skipped: true, skipReason: 'already_attempted' };
+  }
+  if (existing.status === 'RUNNING' && Date.now() - new Date(existing.startedAt || 0).getTime() < 45 * 60 * 1000) {
+    return { ...(existing.result || {}), skipped: true, skipReason: 'already_running' };
+  }
+  return null;
+}
+
+async function googleSyncUnlocked({
+  organizationId,
+  locationId,
+  preset = '7d',
+  from,
+  to,
+  includeReviews = true,
+  jobType = 'google_sync',
+  idempotencyKey = null,
+  force = false,
+  retryIncomplete = false,
+}) {
   const loc = await Location.findOne({ _id: locationId, organizationId, status: 'active' });
   if (!loc) throw new ApiError(404, 'Active location not found');
   const range = parseRange({ preset, from, to });
+  if (idempotencyKey && !force) {
+    const prior = await priorIdempotentResult(idempotencyKey, { retryIncomplete });
+    if (prior) return prior;
+  }
+
   const { conn, token } = await getGoogleAccessToken(organizationId);
   const mapping = conn.mappings?.locations?.[String(locationId)] || {};
-  const idem = `google:sync:${organizationId}:${locationId}:${range.from}:${range.to}`;
-  let job = await JobRun.findOneAndUpdate(
+  const idem = idempotencyKey || uniqueGoogleRunKey({ organizationId, locationId, jobType, from: range.from, to: range.to });
+  const job = await JobRun.findOneAndUpdate(
     { idempotencyKey: idem },
     {
       $set: {
@@ -393,9 +462,10 @@ async function googleSync({ organizationId, locationId, preset = '7d', from, to 
         source: 'google',
         locationId,
         businessDate: range.to,
-        jobType: 'google_sync',
+        jobType,
         status: 'RUNNING',
         startedAt: new Date(),
+        finishedAt: null,
         error: null,
       },
       $inc: { attempts: 1 },
@@ -406,43 +476,67 @@ async function googleSync({ organizationId, locationId, preset = '7d', from, to 
   const errors = {};
   const sources = {};
   try {
-    const tasks = [
-      ['ga4', mapping.ga4PropertyId, () => syncGa4({ token, organizationId, locationId, propertyId: mapping.ga4PropertyId, from: range.from, to: range.to })],
-      ['gsc', mapping.gscSiteUrl, () => syncGsc({ token, organizationId, locationId, siteUrl: mapping.gscSiteUrl, from: range.from, to: range.to })],
-      ['gbp', mapping.gbpLocationName, () => syncGbp({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName, from: range.from, to: range.to })],
+    const sourceTasks = [
+      { source: 'ga4', mapped: mapping.ga4PropertyId, run: () => syncGa4({ token, organizationId, locationId, propertyId: mapping.ga4PropertyId, from: range.from, to: range.to }) },
+      { source: 'gsc', mapped: mapping.gscSiteUrl, run: () => syncGsc({ token, organizationId, locationId, siteUrl: mapping.gscSiteUrl, from: range.from, to: range.to }) },
+      { source: 'gbp', mapped: mapping.gbpLocationName, run: () => syncGbpPerformance({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName, from: range.from, to: range.to }) },
     ];
-    for (const [source, mapped, sync] of tasks) {
+    if (includeReviews) sourceTasks.push({ source: 'reviews', mapped: mapping.gbpLocationName, run: () => syncGbpReviews({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName }) });
+
+    await Promise.all(sourceTasks.map(async ({ source, mapped, run }) => {
+      const priorStatus = job.result?.sources?.[source]?.status;
+      if (retryIncomplete && priorStatus === 'IMPORTED') {
+        sources[source] = job.result.sources[source];
+        return;
+      }
       if (!mapped) {
-        sources[source] = { status: 'UNMAPPED', daysImported: 0 };
-        for (const businessDate of daysInRange(range.from, range.to)) {
-          await upsertSeo({ organizationId, locationId, businessDate, source, status: 'UNAVAILABLE' });
+        if (source === 'reviews') {
+          sources.reviews = { status: 'UNMAPPED', reviewsImported: 0, pages: 0 };
+        } else {
+          sources[source] = { status: 'UNMAPPED', daysImported: 0 };
+          await Promise.all(daysInRange(range.from, range.to).map((businessDate) => upsertSeo({ organizationId, locationId, businessDate, source, status: 'UNAVAILABLE' })));
         }
-        continue;
+        return;
       }
       try {
-        const daysImported = await sync();
-        sources[source] = { status: daysImported ? 'IMPORTED' : 'NO_DATA', daysImported };
+        const result = await run();
+        if (source === 'reviews') sources.reviews = { status: result.hasMore ? 'PARTIAL' : 'IMPORTED', ...result };
+        else sources[source] = { status: result ? 'IMPORTED' : 'NO_DATA', daysImported: result };
       } catch (err) {
         errors[source] = err.message;
-        sources[source] = { status: 'ERROR', daysImported: 0 };
+        sources[source] = source === 'reviews'
+          ? { status: 'ERROR', reviewsImported: 0, pages: 0 }
+          : { status: 'ERROR', daysImported: 0 };
       }
-    }
+    }));
+
     const imported = Object.values(sources).some((source) => source.status === 'IMPORTED');
     const complete = Object.values(sources).every((source) => source.status === 'IMPORTED');
     if (imported) conn.lastSuccessAt = new Date();
+    const syncMeta = { ...((conn.metadata || {}).sync || {}) };
+    syncMeta.analyticsLastAttemptAt = new Date().toISOString();
+    if (includeReviews) syncMeta.reviewsLastAttemptAt = new Date().toISOString();
+    if (sources.reviews?.status === 'IMPORTED') syncMeta.reviewsLastSuccessAt = new Date().toISOString();
+    if (['IMPORTED', 'NO_DATA'].includes(sources.ga4?.status) || ['IMPORTED', 'NO_DATA'].includes(sources.gsc?.status) || ['IMPORTED', 'NO_DATA'].includes(sources.gbp?.status)) {
+      syncMeta.analyticsLastSuccessAt = new Date().toISOString();
+    }
+    conn.metadata = { ...(conn.metadata || {}), sync: syncMeta };
     conn.status = complete ? 'READY' : 'PARTIAL';
     conn.lastError = Object.keys(errors).length ? JSON.stringify(errors).slice(0, 1000) : null;
     await conn.save();
+
     const result = { range, errors, mapped: mapping, sources };
     job.status = complete ? 'COMPLETE' : 'PARTIAL';
     job.result = result;
     job.finishedAt = new Date();
+    job.history = [...(job.history || []), { attempt: job.attempts, startedAt: job.startedAt, finishedAt: job.finishedAt, status: job.status, error: job.error, result: job.result }];
     await job.save();
     return result;
   } catch (err) {
     job.status = 'FAILED';
     job.error = err.message;
     job.finishedAt = new Date();
+    job.history = [...(job.history || []), { attempt: job.attempts, startedAt: job.startedAt, finishedAt: job.finishedAt, status: job.status, error: job.error, result: job.result }];
     await job.save();
     conn.status = 'ERROR';
     conn.lastError = err.message;
@@ -451,10 +545,120 @@ async function googleSync({ organizationId, locationId, preset = '7d', from, to 
   }
 }
 
+async function googleReviewsSyncUnlocked({ organizationId, locationId, idempotencyKey = null }) {
+  const loc = await Location.findOne({ _id: locationId, organizationId, status: 'active' });
+  if (!loc) throw new ApiError(404, 'Active location not found');
+  if (idempotencyKey) {
+    const prior = await priorIdempotentResult(idempotencyKey);
+    if (prior) return prior;
+  }
+  const { conn, token } = await getGoogleAccessToken(organizationId);
+  const mapping = conn.mappings?.locations?.[String(locationId)] || {};
+  if (!mapping.gbpLocationName) return { status: 'UNMAPPED', reviewsImported: 0, pages: 0 };
+
+  const idem = idempotencyKey || uniqueGoogleRunKey({ organizationId, locationId, jobType: 'google_reviews_sync' });
+  const job = await JobRun.findOneAndUpdate(
+    { idempotencyKey: idem },
+    { $set: { organizationId, source: 'google', locationId, businessDate: todayUtc(), jobType: 'google_reviews_sync', status: 'RUNNING', startedAt: new Date(), finishedAt: null, error: null }, $inc: { attempts: 1 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+  try {
+    const result = await syncGbpReviews({ token, organizationId, locationId, gbpLocationName: mapping.gbpLocationName });
+    const now = new Date();
+    const syncMeta = { ...((conn.metadata || {}).sync || {}), reviewsLastAttemptAt: now.toISOString(), reviewsLastSuccessAt: now.toISOString() };
+    conn.metadata = { ...(conn.metadata || {}), sync: syncMeta };
+    conn.lastSuccessAt = now;
+    await conn.save();
+    job.status = result.hasMore ? 'PARTIAL' : 'COMPLETE';
+    job.result = { status: result.hasMore ? 'PARTIAL' : 'IMPORTED', ...result };
+    job.finishedAt = now;
+    job.history = [...(job.history || []), { attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: job.status, result: job.result }];
+    await job.save();
+    return job.result;
+  } catch (err) {
+    const now = new Date();
+    const syncMeta = { ...((conn.metadata || {}).sync || {}), reviewsLastAttemptAt: now.toISOString(), reviewsLastError: String(err.message || err).slice(0, 400) };
+    conn.metadata = { ...(conn.metadata || {}), sync: syncMeta };
+    await conn.save().catch(() => {});
+    job.status = 'FAILED';
+    job.error = String(err.message || err).slice(0, 1000);
+    job.finishedAt = now;
+    job.history = [...(job.history || []), { attempt: job.attempts, startedAt: job.startedAt, finishedAt: now, status: job.status, error: job.error }];
+    await job.save().catch(() => {});
+    throw err;
+  }
+}
+
+function completedDateForTimeZone(timeZone, cutoffHour = 4, now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timeZone || 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const p = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const localDate = `${p.year}-${p.month}-${p.day}`;
+  return addDays(localDate, Number(p.hour) < cutoffHour ? -2 : -1);
+}
+
+async function googleManualSyncUnlocked({ organizationId, locationId }) {
+  const loc = await Location.findOne({ _id: locationId, organizationId, status: 'active' }).select('timezone');
+  if (!loc) throw new ApiError(404, 'Active location not found');
+  const to = completedDateForTimeZone(loc.timezone || 'America/Los_Angeles');
+  const from = addDays(to, -2);
+  const slot = Date.now();
+  return googleSyncUnlocked({
+    organizationId,
+    locationId,
+    from,
+    to,
+    includeReviews: true,
+    jobType: 'google_manual_sync',
+    idempotencyKey: `google:manual:${organizationId}:${locationId}:${slot}`,
+  });
+}
+
+async function googleHistoricalSyncUnlocked({ organizationId, locationId, from, to }) {
+  const range = parseRange({ from, to });
+  const days = daysInRange(range.from, range.to);
+  if (days.length > 90) throw new ApiError(400, 'Google historical refresh is limited to 90 days per request');
+  return googleSyncUnlocked({
+    organizationId,
+    locationId,
+    from: range.from,
+    to: range.to,
+    includeReviews: false,
+    jobType: 'google_historical_refresh',
+  });
+}
+
+function trackedSync(args, jobType, task, manual = false) {
+  return recordGoogleAttempt(args, jobType, async (stage) => {
+    await stage('validating');
+    if (!args.locationId) throw new ApiError(400, 'locationId is required');
+    await stage('acquiring_lock');
+    return withGoogleLock({ ...args, manual }, async () => {
+      await stage('authentication_and_sync');
+      return task(args);
+    });
+  });
+}
+function googleSync(args) { return trackedSync(args, args.jobType || 'google_sync', googleSyncUnlocked); }
+function googleReviewsSync(args) { return trackedSync(args, 'google_reviews_sync', googleReviewsSyncUnlocked); }
+function googleManualSync(args) { return trackedSync(args, 'google_manual_sync', googleManualSyncUnlocked, true); }
+function googleHistoricalSync(args) {
+  return trackedSync(args, 'google_historical_refresh', async (input) => {
+    if (!input.from || !input.to) throw new ApiError(400, 'from and to are required');
+    return googleHistoricalSyncUnlocked(input);
+  });
+}
+
 module.exports = {
   googleConnect,
   googleCallback,
   discoverGoogle,
   googleSync,
+  googleReviewsSync,
+  googleManualSync,
+  googleHistoricalSync,
   getGoogleAccessToken,
 };

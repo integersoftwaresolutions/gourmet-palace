@@ -1,4 +1,4 @@
-const crypto=require('crypto');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const RawIngestEvent=require('../../models/RawIngestEvent');const SeoMetric=require('../../models/SeoMetric');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/env');const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');const google=require('./google.service');
+const crypto=require('crypto');const {withSquareLock}=require('../../workers/squareLock');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const RawIngestEvent=require('../../models/RawIngestEvent');const SeoMetric=require('../../models/SeoMetric');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/env');const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');const google=require('./google.service');
 const squareBase=()=>env.square.environment==='production'?'https://connect.squareup.com':'https://connect.squareupsandbox.com';
 function publicConnection(c){if(!c)return null;const o=c.toJSON?c.toJSON():c;delete o.accessTokenEnc;delete o.refreshTokenEnc;delete o.secretRef;return o}
 async function list(organizationId){return (await Connection.find({organizationId}).sort({provider:1})).map(publicConnection)}
@@ -10,13 +10,13 @@ function squareCapabilities(granted){return{merchantProfile:granted.includes('ME
 async function squareGrantedScopes(accessToken,tokenResponse){
   let granted=parseSquareScopes(tokenResponse?.scopes||tokenResponse?.scope);
   if(granted.includes('ORDERS_READ')&&granted.includes('MERCHANT_PROFILE_READ'))return granted;
-  const status=await fetch(`${squareBase()}/oauth2/token/status`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Square-Version':'2026-01-22','Content-Type':'application/json'}});
+  const status=await fetch(`${squareBase()}/oauth2/token/status`,{method:'POST',signal:AbortSignal.timeout(Number(env.providerHttpTimeoutMs)||12000),headers:{Authorization:`Bearer ${accessToken}`,'Square-Version':'2026-01-22','Content-Type':'application/json'}});
   const body=await status.json().catch(()=>({}));
   if(status.ok)granted=parseSquareScopes(body.scopes||body.scope);
   return granted;
 }
 async function squareCallback(req,organizationId,code,state){
-  verifyState(req,'square',state);const res=await fetch(`${squareBase()}/oauth2/token`,{method:'POST',headers:{'Content-Type':'application/json','Square-Version':'2026-01-22'},body:JSON.stringify({client_id:env.square.applicationId,client_secret:env.square.applicationSecret,code,grant_type:'authorization_code',redirect_uri:env.square.redirectUri})});const data=await res.json();if(!res.ok)throw new ApiError(502,`Square OAuth failed: ${data.message||data.error_description||data.errors?.[0]?.detail||res.status}`);
+  verifyState(req,'square',state);const res=await fetch(`${squareBase()}/oauth2/token`,{method:'POST',signal:AbortSignal.timeout(Number(env.providerHttpTimeoutMs)||12000),headers:{'Content-Type':'application/json','Square-Version':'2026-01-22'},body:JSON.stringify({client_id:env.square.applicationId,client_secret:env.square.applicationSecret,code,grant_type:'authorization_code',redirect_uri:env.square.redirectUri})});const data=await res.json();if(!res.ok)throw new ApiError(502,`Square OAuth failed: ${data.message||data.error_description||data.errors?.[0]?.detail||res.status}`);
   if(!data.access_token)throw new ApiError(502,'Square OAuth did not return an access token');
   const priorSquare=await Connection.findOne({organizationId,provider:'square'}).select('+secretRef');let priorSquareSecret=null;if(priorSquare?.secretRef&&!data.refresh_token){try{priorSquareSecret=await secrets.get(priorSquare.secretRef)}catch{priorSquareSecret=null}}const secretRef=await secrets.put(organizationId,'square',{accessToken:data.access_token,refreshToken:data.refresh_token||priorSquareSecret?.refreshToken||'',expiresAt:data.expires_at||null});
   const granted=await squareGrantedScopes(data.access_token,data);const capabilities=squareCapabilities(granted);
@@ -24,13 +24,13 @@ async function squareCallback(req,organizationId,code,state){
   return discoverSquare(organizationId)
 }
 async function refreshSquare(conn,secret){
-  if(!secret.refreshToken)return {conn,secret};const res=await fetch(`${squareBase()}/oauth2/token`,{method:'POST',headers:{'Content-Type':'application/json','Square-Version':'2026-01-22'},body:JSON.stringify({client_id:env.square.applicationId,client_secret:env.square.applicationSecret,refresh_token:secret.refreshToken,grant_type:'refresh_token'})});const data=await res.json();if(!res.ok)throw new Error(`Square refresh failed (${res.status})`);
+  if(!secret.refreshToken)return {conn,secret};const res=await fetch(`${squareBase()}/oauth2/token`,{method:'POST',signal:AbortSignal.timeout(Number(env.providerHttpTimeoutMs)||12000),headers:{'Content-Type':'application/json','Square-Version':'2026-01-22'},body:JSON.stringify({client_id:env.square.applicationId,client_secret:env.square.applicationSecret,refresh_token:secret.refreshToken,grant_type:'refresh_token'})});const data=await res.json();if(!res.ok)throw new Error(`Square refresh failed (${res.status})`);
   const next={accessToken:data.access_token,refreshToken:data.refresh_token||secret.refreshToken,expiresAt:data.expires_at||secret.expiresAt||null};await secrets.update(conn.secretRef,next);conn.expiresAt=next.expiresAt?new Date(next.expiresAt):conn.expiresAt;await conn.save();return {conn,secret:next}
 }
 async function squareToken(organizationId){
   let conn=await Connection.findOne({organizationId,provider:'square'}).select('+secretRef');if(!conn?.secretRef)throw new ApiError(409,'Square is not connected');let secret=await secrets.get(conn.secretRef);if(!secret.accessToken)throw new ApiError(409,'Square credentials are unavailable');if(conn.expiresAt&&new Date(conn.expiresAt).getTime()-Date.now()<5*60*1000)({conn,secret}=await refreshSquare(conn,secret));return {conn,token:secret.accessToken}
 }
-async function sqFetch(token,path,options={}){const res=await fetch(`${squareBase()}${path}`,{...options,headers:{Authorization:`Bearer ${token}`,'Square-Version':'2026-01-22','Content-Type':'application/json',...(options.headers||{})}});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(`Square ${path} failed (${res.status}): ${data.errors?.[0]?.detail||'provider error'}`);return data}
+async function sqFetch(token,path,options={}){const res=await fetch(`${squareBase()}${path}`,{...options,signal:options.signal||AbortSignal.timeout(Number(env.providerHttpTimeoutMs)||12000),headers:{Authorization:`Bearer ${token}`,'Square-Version':'2026-01-22','Content-Type':'application/json',...(options.headers||{})}});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(`Square ${path} failed (${res.status}): ${data.errors?.[0]?.detail||'provider error'}`);return data}
 const squareCatalogCache=new Map();
 async function squareCatalogMap(organizationId,token,enabled=true){
   if(!enabled)return {available:false,variationToCategory:new Map()};
@@ -94,7 +94,7 @@ async function squareOrdersFromPayments(token,acquired,payments){
     if(data.order){acquired.push(data.order);found.add(data.order.id)}
   }
 }
-async function squareSync({organizationId,locationId,businessDate,force=false,ignoreRetryDelay=false}){
+async function squareSyncUnlocked({organizationId,locationId,businessDate,force=false,ignoreRetryDelay=false}){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(businessDate||'')))throw new ApiError(400,'businessDate must be YYYY-MM-DD');
   const loc=await Location.findOne({_id:locationId,organizationId,status:'active'});if(!loc)throw new ApiError(404,'Active location not found');
   const {conn,token}=await squareToken(organizationId);if(!conn.capabilities?.orders)throw new ApiError(409,'Square ORDERS_READ capability is unavailable');const providerLoc=conn.mappings?.locations?.[String(locationId)]?.squareLocationId;if(!providerLoc)throw new ApiError(409,'Square location mapping is not configured');
@@ -150,6 +150,16 @@ async function squareSync({organizationId,locationId,businessDate,force=false,ig
     const result={orders:filtered.filter(o=>o.state!=='CANCELED').length,canceled:filtered.filter(o=>o.state==='CANCELED').length,rawIngestId:rawEvent.id,reconciliation:rec,channelsApproved,catalogStatus:catalog.available?'COMPLETE':'UNAVAILABLE',paymentsStatus:conn.capabilities?.payments?'COMPLETE':'UNAVAILABLE',sourceClosed};job.status=pass?'COMPLETE':'PARTIAL';job.result=result;job.finishedAt=new Date();job.nextRetryAt=pass?null:new Date(Date.now()+Math.min(60*60000,Math.max(15*60000,2**Math.min(job.attempts||1,5)*60000)));await job.save();conn.lastSuccessAt=new Date();conn.status=pass?'READY':'PARTIAL';conn.lastError=pass?null:!conn.capabilities?.payments?'PAYMENTS_READ is unavailable; refund-dependent reconciliation remains Partial':!sourceClosed?'Source business day is still open':'Reconciliation outside tolerance';await conn.save();return result
   }catch(err){if(rawEvent){rawEvent.status='FAILED';rawEvent.error=String(err.message||err).slice(0,1000);await rawEvent.save().catch(()=>{});}job.status='FAILED';job.error=err.message;job.finishedAt=new Date();job.nextRetryAt=new Date(Date.now()+Math.min(6*3600000,2**Math.min(job.attempts||1,6)*60000));await job.save();conn.status='ERROR';conn.lastError=err.message;await conn.save();throw err}
 }
+function completedDateForTimeZone(timeZone, cutoffHour = 4, now = new Date()){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:timeZone||'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const p=Object.fromEntries(parts.map(part=>[part.type,part.value]));const localDate=`${p.year}-${p.month}-${p.day}`;return addDays(localDate,Number(p.hour)<cutoffHour?-2:-1);
+}
+async function squareSync(args){return withSquareLock(args,()=>squareSyncUnlocked(args))}
+async function squareManualSync({organizationId,locationId}){
+  const loc=await Location.findOne({_id:locationId,organizationId,status:'active'}).select('timezone');if(!loc)throw new ApiError(404,'Active location not found');
+  const businessDate=completedDateForTimeZone(loc.timezone||'America/Los_Angeles');
+  return withSquareLock({organizationId,locationId,manual:true},()=>squareSyncUnlocked({organizationId,locationId,businessDate,force:true,ignoreRetryDelay:true}));
+}
 async function squareBackfill({organizationId,locationId,from,to}){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(from||''))||!/^\d{4}-\d{2}-\d{2}$/.test(String(to||''))||from>to)throw new ApiError(400,'Square backfill requires a valid from/to date range');
   const loc=await Location.findOne({_id:locationId,organizationId,status:'active'}).select('_id');if(!loc)throw new ApiError(404,'Active location not found');
@@ -175,4 +185,4 @@ async function toastImport({organizationId,locationId,fileName,base64,mapping={}
   rawEvent.status='PROCESSED';rawEvent.metadata={...(rawEvent.metadata||{}),imported,dates:dates.length};await rawEvent.save();await Connection.findOneAndUpdate({organizationId,provider:'toast'},{status:'READY',capabilities:{historicalImport:true,live:false},metadata:{lastArchiveKey:archived,lastArchiveHash:archiveHash,lastImportRows:imported,lastImportDates:dates.length,lastOriginalName:pathSafe(fileName||'toast-export.csv')},lastSuccessAt:new Date()},{upsert:true,new:true});return {imported,archiveKey:archived,archiveHash,dates:dates.length,rawIngestId:rawEvent.id}
 }
 const pathSafe=s=>String(s).replace(/[^a-zA-Z0-9._-]/g,'_');
-module.exports={list,squareConnect,squareCallback,discoverSquare,setMappings,squareSync,squareBackfill,toastImport,...google};
+module.exports={list,squareConnect,squareCallback,discoverSquare,setMappings,squareSync,squareManualSync,squareBackfill,toastImport,...google};

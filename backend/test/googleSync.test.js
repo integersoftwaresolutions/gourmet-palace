@@ -10,6 +10,9 @@ async function runSync(mapping, response, ok = true) {
   const conn = { secretRef: 'test', mappings: { locations: { sherman: mapping } }, save: async () => {} };
   const job = { save: async () => {} };
   const dependencies = {
+    '../../models/GoogleSyncState': {},
+    '../../workers/googleAttempt': { recordGoogleAttempt: async (_, __, task) => task(async () => {}) },
+    '../../workers/googleLock': { withGoogleLock: async (args, task) => task() },
     '../../models/Connection': { findOne: () => ({ select: async () => conn }) },
     '../../models/Location': { findOne: async () => ({ _id: 'sherman' }) },
     '../../models/SeoMetric': { findOneAndUpdate: async (filter, values) => { writes.push({ ...filter, ...values }); } },
@@ -20,7 +23,7 @@ async function runSync(mapping, response, ok = true) {
     '../../services/providerSecrets': { get: async () => ({ accessToken: 'test' }) },
     '../../utils/dateRange': require('../src/utils/dateRange'),
   };
-  const context = { module: { exports: {} }, require: (name) => {
+  const context = { AbortSignal, module: { exports: {} }, require: (name) => {
     if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name}`);
     return dependencies[name];
   }, fetch: async (url) => { calls.push(url); return { ok, status: ok ? 200 : 403, json: async () => response }; } };
@@ -46,7 +49,9 @@ test('empty GA4 response differs from an imported zero and a provider failure', 
   assert.equal(imported.result.sources.ga4.status, 'IMPORTED');
   assert.equal(imported.result.sources.ga4.daysImported, 1);
   assert.ok(imported.conn.lastSuccessAt);
-  assert.equal(imported.writes[0].metrics.sessions, 0);
+  const ga4Write = imported.writes.find((row) => row.source === 'ga4');
+  assert.ok(ga4Write);
+  assert.equal(ga4Write.metrics.sessions, 0);
   assert.match(imported.calls[0], /properties\/123:runReport/);
   const failed = await runSync({ ga4PropertyId: '123' }, { error: { message: 'Access denied' } }, false);
   assert.equal(failed.result.sources.ga4.status, 'ERROR');

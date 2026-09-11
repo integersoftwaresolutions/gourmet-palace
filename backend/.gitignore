@@ -1,6 +1,8 @@
 node_modules/
 .env
 .env.production
+.env.musagmail
+.env.faaizgmail
 *.log
 .DS_Store
 /storage/

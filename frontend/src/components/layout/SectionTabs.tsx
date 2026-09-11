@@ -1,5 +1,74 @@
-import {useNavigate} from 'react-router-dom';import {Tabs} from '../ui';import {useAuth} from '../../context/useAuth';
-export function PerformanceTabs({value}:{value:string}){const n=useNavigate(),{isAdmin}=useAuth();const items=[{id:'stores',label:'Stores'},{id:'operations',label:'Operations'},...(isAdmin?[{id:'finance',label:'Finance'}]:[]),{id:'forecast',label:'Forecasting'}];const map:Record<string,string>={stores:'/performance',operations:'/performance/operations',finance:'/performance/finance',forecast:'/performance/forecast'};return <Tabs value={value} items={items} onChange={id=>n(map[id])}/>}
-export function OperationsTabs({value}:{value:string}){const n=useNavigate(),{isAdmin}=useAuth();const items=[{id:'invoices',label:'Invoices'},{id:'inventory',label:'Inventory'},{id:'vendors',label:'Vendors'},...(isAdmin?[{id:'food-cost',label:'Food Cost'}]:[])];const map:Record<string,string>={invoices:'/operations',inventory:'/operations/inventory',vendors:'/operations/vendors','food-cost':'/operations/food-cost'};return <Tabs value={value} items={items} onChange={id=>n(map[id])}/>}
-export function PresenceTabs({value}:{value:string}){const n=useNavigate();return <Tabs value={value} items={[{id:'reviews',label:'Reviews'},{id:'seo',label:'SEO & Growth'}]} onChange={id=>n(id==='reviews'?'/presence':'/presence/seo')}/>}
-export function AdminTabs({value}:{value:string}){const n=useNavigate();const map:Record<string,string>={users:'/admin',locations:'/admin/locations',integrations:'/admin/integrations',system:'/admin/system'};return <Tabs variant="underline" value={value} items={[{id:'users',label:'Users'},{id:'locations',label:'Locations'},{id:'integrations',label:'Integrations'},{id:'system',label:'System & thresholds'}]} onChange={id=>n(map[id])}/>} 
+import { useNavigate } from "react-router-dom";
+import { Tabs } from "../ui";
+import { useAuth } from "../../context/useAuth";
+export function PerformanceTabs({ value }: { value: string }) {
+  const n = useNavigate(),
+    { isAdmin } = useAuth();
+  const items = [
+    { id: "stores", label: "Stores" },
+    { id: "operations", label: "Operations" },
+    ...(isAdmin ? [{ id: "finance", label: "Finance" }] : []),
+    { id: "forecast", label: "Forecasting" },
+  ];
+  const map: Record<string, string> = {
+    stores: "/performance",
+    operations: "/performance/operations",
+    finance: "/performance/finance",
+    forecast: "/performance/forecast",
+  };
+  return <Tabs value={value} items={items} onChange={(id) => n(map[id])} />;
+}
+export function OperationsTabs({ value }: { value: string }) {
+  const n = useNavigate(),
+    { isAdmin } = useAuth();
+  const items = [
+    { id: "invoices", label: "Invoices" },
+    { id: "inventory", label: "Inventory" },
+    { id: "vendors", label: "Vendors" },
+    ...(isAdmin ? [{ id: "food-cost", label: "Food Cost" }] : []),
+  ];
+  const map: Record<string, string> = {
+    invoices: "/operations",
+    inventory: "/operations/inventory",
+    vendors: "/operations/vendors",
+    "food-cost": "/operations/food-cost",
+  };
+  return <Tabs value={value} items={items} onChange={(id) => n(map[id])} />;
+}
+export function PresenceTabs({ value }: { value: string }) {
+  const n = useNavigate();
+  return (
+    <Tabs
+      value={value}
+      items={[
+        { id: "reviews", label: "Reviews" },
+        { id: "seo", label: "SEO & Growth" },
+      ]}
+      onChange={(id) => n(id === "reviews" ? "/presence" : "/presence/seo")}
+    />
+  );
+}
+export function AdminTabs({ value }: { value: string }) {
+  const n = useNavigate();
+  const map: Record<string, string> = {
+    users: "/admin",
+    locations: "/admin/locations",
+    integrations: "/admin/integrations",
+    system: "/admin/system",
+    jobs: "/admin/jobs",
+  };
+  return (
+    <Tabs
+      variant="underline"
+      value={value}
+      items={[
+        { id: "users", label: "Users" },
+        { id: "locations", label: "Locations" },
+        { id: "integrations", label: "Integrations" },
+        { id: "system", label: "System & thresholds" },
+        { id: "jobs", label: "Job logs" },
+      ]}
+      onChange={(id) => n(map[id])}
+    />
+  );
+}

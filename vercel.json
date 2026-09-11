@@ -32,8 +32,12 @@
   ],
   "crons": [
     {
-      "path": "/api/v1/system/worker/tick",
-      "schedule": "0 0 * * *"
+      "path": "/api/v1/system/cron/daily",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/v1/system/cron/daily",
+      "schedule": "0 13 * * *"
     }
   ]
 }

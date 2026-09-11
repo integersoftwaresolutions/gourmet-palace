@@ -10,7 +10,6 @@
     "seed:admin": "node src/scripts/seedAdmin.js",
     "copy:mongo": "node src/scripts/copyMongoDatabase.js",
     "import:toast-summary": "node src/scripts/importToastSalesSummary.js",
-    "worker": "node src/worker.js",
     "test": "node --test"
   },
   "engines": {

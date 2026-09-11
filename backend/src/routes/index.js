@@ -21,7 +21,7 @@ router.use('/settings', require('../modules/settings/settings.routes'));
 router.use('/analytics', require('../modules/analytics/analytics.routes'));
 router.use('/briefs', require('../modules/briefs/briefs.routes'));
 router.use('/integrations', require('../modules/integrations/integrations.routes'));
-router.use('/system/worker', require('../modules/system/worker.routes'));
+router.use('/system/cron', require('../modules/system/cron.routes'));
 router.use('/system', require('../modules/system/system.routes'));
 router.use('/export', require('../modules/export/export.routes'));
 router.use('/alerts', require('../modules/alerts/alerts.routes'));

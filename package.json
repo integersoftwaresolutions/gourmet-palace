@@ -1,7 +1,7 @@
 {
   "name": "gourmet-palace",
   "private": true,
-  "description": "Gourmet Palace Command Center — Vite frontend + Express API (Vercel monorepo)",
+  "description": "Gourmet Palace Command Center \u2014 Vite frontend + Express API (Vercel monorepo)",
   "engines": {
     "node": "22.x"
   },
@@ -10,7 +10,6 @@
     "build": "npm run build --prefix frontend",
     "dev:api": "npm run dev --prefix backend",
     "dev:web": "npm run dev --prefix frontend",
-    "worker": "npm run worker --prefix backend",
     "test": "npm test --prefix backend"
   }
 }

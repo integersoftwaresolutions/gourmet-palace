@@ -44,6 +44,7 @@ const apiPublicOrigin = stripTrailingSlash(
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 4000,
+  providerHttpTimeoutMs: Number(process.env.PROVIDER_HTTP_TIMEOUT_MS) || 12000,
   mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/gourmet-palace',
   corsOrigin: mergeOrigins(process.env.CORS_ORIGIN || 'http://localhost:5173', ...vercelOrigins, defaultAppUrl),
   appUrl: defaultAppUrl,
@@ -74,7 +75,7 @@ const env = {
 
   passwordResetTtlMs: Number(process.env.PASSWORD_RESET_TTL_MS) || 60 * 60 * 1000,
   secretEncryptionKey: process.env.SECRET_ENCRYPTION_KEY || '',
-  secretStoreProvider: process.env.SECRET_STORE_PROVIDER || (process.env.NODE_ENV === 'production' ? 'aws' : 'local'),
+  secretStoreProvider: process.env.SECRET_STORE_PROVIDER || (process.env.VERCEL ? 'mongo' : (process.env.NODE_ENV === 'production' ? 'aws' : 'local')),
   secretStorePrefix: process.env.SECRET_STORE_PREFIX || 'gourmet-palace',
   localSecretsDir: process.env.LOCAL_SECRETS_DIR || (process.env.VERCEL ? '/tmp/gp-secrets' : 'storage/secrets'),
   aws: {
@@ -86,7 +87,7 @@ const env = {
   fileSigningSecret: process.env.FILE_SIGNING_SECRET || '',
   localStorageDir: process.env.LOCAL_STORAGE_DIR || (process.env.VERCEL ? '/tmp/gp-storage' : 'storage/private'),
   storage: {
-    provider: process.env.STORAGE_PROVIDER || (process.env.NODE_ENV === 'production' ? 's3' : 'local'),
+    provider: process.env.STORAGE_PROVIDER || (process.env.VERCEL ? 'mongo' : (process.env.NODE_ENV === 'production' ? 's3' : 'local')),
     endpoint: process.env.S3_ENDPOINT || '',
     region: process.env.S3_REGION || 'us-west-2',
     bucket: process.env.S3_BUCKET || '',

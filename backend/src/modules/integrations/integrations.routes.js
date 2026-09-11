@@ -8,6 +8,7 @@ const audit = require('../audit/audit.service');
 const { requestMeta } = require('../../utils/requestMeta');
 const ApiError = require('../../utils/ApiError');
 const env = require('../../config/env');
+const { runManualRefresh } = require('../../workers/daily.worker');
 
 const r = Router();
 r.use(authenticate, requireAdmin);
@@ -41,6 +42,12 @@ r.post('/:provider/discover', asyncHandler(async (req, res) => {
   if (req.params.provider === 'google') return ApiResponse.send(res, { data: { connection: await svc.discoverGoogle(req.auth.organizationId) } });
   throw new ApiError(400, 'Unsupported provider');
 }));
+r.post('/sync-now', asyncHandler(async (req, res) => {
+  if (!req.body.locationId) throw new ApiError(400, 'locationId is required');
+  const data = await runManualRefresh({ organizationId: req.auth.organizationId, locationId: req.body.locationId });
+  await log(req, 'integration.manual_sync_all', { locationId: req.body.locationId, businessDate: data.businessDate, status: data.status, errors: data.errors });
+  ApiResponse.send(res, { data });
+}));
 r.post('/square/sync', asyncHandler(async (req, res) => {
   const data = await svc.squareSync({ organizationId: req.auth.organizationId, locationId: req.body.locationId, businessDate: req.body.businessDate, force: req.body.force === true });
   await log(req, 'integration.square.manual_sync', { locationId: req.body.locationId, businessDate: req.body.businessDate });
@@ -53,8 +60,13 @@ r.post('/square/backfill', asyncHandler(async (req, res) => {
   ApiResponse.send(res, { data });
 }));
 r.post('/google/sync', asyncHandler(async (req, res) => {
-  const data = await svc.googleSync({ organizationId: req.auth.organizationId, locationId: req.body.locationId, preset: req.body.preset, from: req.body.from, to: req.body.to });
-  await log(req, 'integration.google.manual_sync', { locationId: req.body.locationId });
+  const data = await svc.googleManualSync({ organizationId: req.auth.organizationId, locationId: req.body.locationId });
+  await log(req, 'integration.google.manual_sync', { locationId: req.body.locationId, from: data.range?.from, to: data.range?.to });
+  ApiResponse.send(res, { data });
+}));
+r.post('/google/backfill', asyncHandler(async (req, res) => {
+  const data = await svc.googleHistoricalSync({ organizationId: req.auth.organizationId, locationId: req.body.locationId, from: req.body.from, to: req.body.to });
+  await log(req, 'integration.google.historical_refresh', { locationId: req.body.locationId, from: data.range?.from, to: data.range?.to });
   ApiResponse.send(res, { data });
 }));
 r.put('/:provider/mappings', asyncHandler(async (req, res) => {
