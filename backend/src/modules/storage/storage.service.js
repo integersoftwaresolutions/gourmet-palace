@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
-const env = require('../../config/env');
+const env = require('../../config/getEnv')();
 const ApiError = require('../../utils/ApiError');
 const { signedFetch } = require('../../services/awsSigV4');
 
