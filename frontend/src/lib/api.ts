@@ -466,6 +466,11 @@ export type OrderRecord = {
   status: "COMPLETE" | "PARTIAL";
 };
 export type FinanceData = AnalyticsSummary & {
+  locationComparisons?: Array<{
+    locationId: string;
+    locationName: string;
+    coverage: number;
+  }>;
   approvedFoodPurchases: number;
   foodCostPercent: number | null;
   foodCostTarget: { min: number; max: number } | null;
