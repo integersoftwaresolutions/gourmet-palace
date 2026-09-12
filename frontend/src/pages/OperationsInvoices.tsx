@@ -140,7 +140,7 @@ export function OperationsInvoices() {
       <QueryState data={data} error={error} isLoading={isLoading} isRefreshing={isRefreshing} onRetry={reload} loader={<ListSkeleton />}>
         {(rows) => (
         <Card>
-          {rows.length === 0 ? <p className="text-sm text-card-text-muted">No invoices in this scope.</p> : rows.map((invoice) => (
+          {rows.length === 0 ? <p className="text-sm text-card-text-muted">No invoices in this scope.</p> : false && rows.map((invoice) => (
             <div key={invoice._id} className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border py-3 last:border-0">
               <div className="text-left">
                 <p className="text-sm font-medium text-card-text">{invoice.vendorName || 'Unknown vendor'} · {invoice.invoiceNumber || 'No number'}</p>
@@ -159,10 +159,14 @@ export function OperationsInvoices() {
                 {invoice.sourceUrl && <a className="mt-3 inline-block text-brand underline" href={invoice.sourceUrl} target="_blank" rel="noreferrer">Open original invoice</a>}
                 <p className="mt-4 font-medium">Extracted line items ({invoice.lineItems?.length || 0})</p>
                 {invoice.lineItems?.length ? <div className="mt-2 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{invoice.lineItems.map((line) => <tr key={line._id}><td>{line.description || '—'}</td><td>{line.quantity ?? '—'}</td><td>{line.unit || '—'}</td><td>{money(line.unitPrice)}</td><td>{money(line.totalMoney)}</td></tr>)}</tbody></table></div> : <p className="mt-2 text-xs text-card-text-muted">No line items were extracted.</p>}
-                {invoice.ocrFields?.error && <p className="mt-3 text-xs text-red-300">Extraction error: {String(invoice.ocrFields.error)}</p>}
+                {Boolean(invoice.ocrFields?.error) && <p className="mt-3 text-xs text-red-300">Extraction error: {String(invoice.ocrFields.error)}</p>}
               </div>}
             </div>
           ))}
+          {rows.length > 0 && <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm">
+            <thead><tr className="border-b border-card-border text-[11px] uppercase tracking-[.16em] text-card-text-muted"><th className="pb-4 pr-4">Vendor</th><th className="pb-4 pr-4">Invoice #</th><th className="pb-4 pr-4">Date</th><th className="pb-4 pr-4">Location</th><th className="pb-4 pr-4">Total</th><th className="pb-4 pr-4">Status</th><th className="pb-4 text-right">Actions</th></tr></thead>
+            <tbody>{rows.map((invoice) => <tr key={invoice._id} className="border-b border-card-border last:border-0"><td className="py-4 pr-4 font-semibold text-card-text">{invoice.vendorName || 'Unknown vendor'}</td><td className="py-4 pr-4 text-card-text-muted">{invoice.invoiceNumber || 'No number'}</td><td className="py-4 pr-4 text-card-text-muted">{generalDate(invoice.invoiceDate)}</td><td className="py-4 pr-4 text-card-text-muted">{names[invoice.locationId] || invoice.locationId}</td><td className="py-4 pr-4 font-semibold text-card-text">{money(invoice.totalMoney, 2)}</td><td className="py-4 pr-4"><Pill size="md" tone={invoice.status === 'APPROVED' ? 'success' : invoice.status === 'FAILED' || invoice.status === 'REJECTED' ? 'danger' : 'warning'}>{invoice.status === 'PENDING_REVIEW' ? 'Review required' : invoice.status.replaceAll('_', ' ')}</Pill></td><td className="py-4"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => { setSourceView('original'); setSourceId(invoice._id) }}>View</Button>{['PENDING_REVIEW', 'FAILED'].includes(invoice.status) && <Button size="sm" onClick={() => setReviewId(invoice._id)}>Review</Button>}{invoice.status !== 'APPROVED' && invoice.status !== 'REJECTED' && <Button size="sm" variant="outline" onClick={() => void act(() => invoicesApi.reject(invoice._id, 'Rejected in Operations'))}>Reject</Button>}{invoice.status !== 'APPROVED' && <Button size="sm" variant="ghost" onClick={() => setDeleteId(invoice._id)}>Delete</Button>}</div></td></tr>)}</tbody>
+          </table></div>}
         </Card>
         )}
       </QueryState>
