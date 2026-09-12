@@ -3,11 +3,12 @@ const ApiResponse = require('../../utils/ApiResponse');
 const ApiError = require('../../utils/ApiError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { runVercelDaily } = require('../../workers/daily.worker');
+const env = require('../../config/getEnv')();
 
 const router = Router();
 
 function assertCronAuthorized(req) {
-  const secret = process.env.CRON_SECRET;
+  const secret = env.cronSecret;
   if (!secret) throw new ApiError(503, 'CRON_SECRET is not configured');
   const auth = req.get('authorization') || '';
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';

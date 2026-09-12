@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const env = require('./getEnv')();
 
 /** Reuse the connection across Vercel serverless invocations in the same isolate. */
 const globalCache = globalThis;
@@ -7,7 +8,7 @@ if (!globalCache.__gpMongoose) {
 }
 
 function mongoUri() {
-  return process.env.MONGODB_URI || process.env.MONGO_URL || '';
+  return env.mongodbUri || '';
 }
 
 async function connectDB() {

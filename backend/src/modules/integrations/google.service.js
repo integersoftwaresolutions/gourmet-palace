@@ -7,7 +7,7 @@ const SeoMetric = require('../../models/SeoMetric');
 const Review = require('../../models/Review');
 const JobRun = require('../../models/JobRun');
 const ApiError = require('../../utils/ApiError');
-const env = require('../../config/env');
+const env = require('../../config/getEnv')();
 const secrets = require('../../services/providerSecrets');
 const { parseRange, addDays, todayUtc } = require('../../utils/dateRange');
 

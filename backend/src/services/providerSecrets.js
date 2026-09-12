@@ -1,6 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
-const env = require('../config/env');
+const env = require('../config/getEnv')();
 const vault = require('./secretVault');
 const { signedFetch } = require('./awsSigV4');
 const ApiError = require('../utils/ApiError');

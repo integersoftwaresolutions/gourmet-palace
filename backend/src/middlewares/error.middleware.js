@@ -1,4 +1,4 @@
-const env = require('../config/env');
+const env = require('../config/getEnv')();
 const ApiError = require('../utils/ApiError');
 
 // eslint-disable-next-line no-unused-vars

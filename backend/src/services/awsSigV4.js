@@ -1,4 +1,4 @@
-const crypto=require('crypto');const ApiError=require('../utils/ApiError');const env=require('../config/env');
+const crypto=require('crypto');const ApiError=require('../utils/ApiError');const env=require('../config/getEnv')();
 let cached=null;
 const sha256=v=>crypto.createHash('sha256').update(v).digest('hex');const hmac=(key,data)=>crypto.createHmac('sha256',key).update(data).digest();
 function rfc3986(s){return encodeURIComponent(s).replace(/[!'()*]/g,c=>`%${c.charCodeAt(0).toString(16).toUpperCase()}`)}
@@ -6,7 +6,7 @@ async function resolveCredentials(explicit){
   if(explicit?.accessKeyId&&explicit?.secretAccessKey)return explicit;
   if(env.aws?.accessKeyId&&env.aws?.secretAccessKey)return {accessKeyId:env.aws.accessKeyId,secretAccessKey:env.aws.secretAccessKey,sessionToken:env.aws.sessionToken||''};
   if(cached&&(!cached.expiration||new Date(cached.expiration).getTime()-Date.now()>300000))return cached;
-  const rel=process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;if(rel){
+  const rel=env.aws?.containerCredentialsRelativeUri;if(rel){
     const res=await fetch(`http://169.254.170.2${rel}`);if(!res.ok)throw new ApiError(503,'Unable to obtain ECS task-role credentials');const d=await res.json();cached={accessKeyId:d.AccessKeyId,secretAccessKey:d.SecretAccessKey,sessionToken:d.Token||'',expiration:d.Expiration};return cached
   }
   throw new ApiError(503,'AWS credentials are unavailable. Configure an ECS task role or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.')

@@ -7,7 +7,7 @@ const { parseRange } = require('../../utils/dateRange');
 const audit = require('../audit/audit.service');
 const { requestMeta } = require('../../utils/requestMeta');
 const ApiError = require('../../utils/ApiError');
-const env = require('../../config/env');
+const env = require('../../config/getEnv')();
 const { runManualRefresh } = require('../../workers/daily.worker');
 
 const r = Router();

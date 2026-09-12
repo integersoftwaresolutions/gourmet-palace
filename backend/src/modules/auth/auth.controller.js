@@ -82,7 +82,7 @@ const signin = asyncHandler(async (req, res) => {
 });
 
 const signout = asyncHandler(async (req, res) => {
-  const env = require('../../config/env');
+  const env = require('../../config/getEnv')();
   let user = null;
   if (req.session?.userId) {
     try {

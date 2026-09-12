@@ -29,11 +29,7 @@ app.use(async (req, res, next) => {
 
 app.use(helmet());
 const allowedOrigins = String(
-  env.corsOrigin
-  || process.env.CORS_ORIGIN
-  || process.env.APP_URL
-  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
-  || 'http://localhost:5173',
+  env.corsOrigin || env.appUrl,
 )
   .split(',')
   .map((value) => value.trim().replace(/\/$/, ''))
