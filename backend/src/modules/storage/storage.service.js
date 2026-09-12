@@ -148,7 +148,9 @@ async function remove(ref) {
 function sign(ref, expiresSeconds = 300) {
   const exp = Math.floor(Date.now() / 1000) + Math.min(Math.max(Number(expiresSeconds) || 300, 30), 900);
   const body = `${ref}.${exp}`;
-  const sig = crypto.createHmac('sha256', env.fileSigningSecret || env.sessionSecret).update(body).digest('base64url');
+  const signingSecret = process.env.FILE_SIGNING_SECRET || process.env.SESSION_SECRET || env.fileSigningSecret || env.sessionSecret;
+  if (!signingSecret) throw new ApiError(503, 'File signing secret is not configured');
+  const sig = crypto.createHmac('sha256', signingSecret).update(body).digest('base64url');
   return { token: Buffer.from(ref).toString('base64url'), exp, sig };
 }
 
@@ -157,7 +159,9 @@ function verify(token, exp, sig) {
   let ref;
   try { ref = Buffer.from(token, 'base64url').toString('utf8'); }
   catch { throw new ApiError(403, 'Invalid file token'); }
-  const expected = crypto.createHmac('sha256', env.fileSigningSecret || env.sessionSecret).update(`${ref}.${exp}`).digest();
+  const signingSecret = process.env.FILE_SIGNING_SECRET || process.env.SESSION_SECRET || env.fileSigningSecret || env.sessionSecret;
+  if (!signingSecret) throw new ApiError(503, 'File signing secret is not configured');
+  const expected = crypto.createHmac('sha256', signingSecret).update(`${ref}.${exp}`).digest();
   let got;
   try { got = Buffer.from(String(sig || ''), 'base64url'); }
   catch { throw new ApiError(403, 'Invalid file signature'); }
