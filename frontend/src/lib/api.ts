@@ -466,7 +466,7 @@ export type OrderRecord = {
   status: "COMPLETE" | "PARTIAL";
 };
 export type FinanceData = AnalyticsSummary & {
-  locationComparisons?: Array<{
+  locationComparisons: Array<{
     locationId: string;
     locationName: string;
     coverage: number;
