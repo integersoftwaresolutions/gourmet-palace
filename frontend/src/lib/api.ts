@@ -70,12 +70,16 @@ export async function apiRequest<T>(
 
 export type AuthUser = {
   id: string;
-  organizationId: string;
+  organizationId: string | null;
   name: string;
   email: string;
   role: string;
   locationIds?: string[];
   isActive: boolean;
+  emailVerified: boolean;
+  onboardingComplete: boolean;
+  emailVerifiedAt?: string | null;
+  onboardingCompletedAt?: string | null;
   invitedAt?: string | null;
   notificationPreferences?: {
     email: boolean;
@@ -104,21 +108,65 @@ export type Location = {
   status: "active" | "inactive";
 };
 
+export type Organization = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "suspended";
+};
+
 export type AdminUser = AuthUser & {
   locations: Array<{ id: string; name: string }>;
   status: "active" | "invited" | "inactive";
 };
 
 export const authApi = {
+  register: (body: { name: string; email: string; password: string }) =>
+    apiRequest<{ registered: boolean; email: string }>("/auth/register", {
+      method: "POST",
+      body,
+    }),
+
+  verifyEmail: (body: { token: string }) =>
+    apiRequest<{ verified: boolean }>("/auth/verify-email", {
+      method: "POST",
+      body,
+    }),
+
+  resendVerification: (body: { email: string }) =>
+    apiRequest<{ accepted: boolean }>("/auth/resend-verification", {
+      method: "POST",
+      body,
+    }),
+
   signin: (body: { email: string; password: string }) =>
-    apiRequest<{ user: AuthUser }>("/auth/signin", { method: "POST", body }),
+    apiRequest<{ user: AuthUser; next: string }>("/auth/signin", {
+      method: "POST",
+      body,
+    }),
 
   signout: () =>
     apiRequest<{ signedOut: boolean }>("/auth/signout", { method: "POST" }),
 
   me: () =>
-    apiRequest<{ user: AuthUser; permissions: Permissions }>("/auth/me", {
+    apiRequest<{ user: AuthUser; permissions: Permissions | null }>("/auth/me", {
       method: "GET",
+    }),
+
+  completeOnboarding: (body: {
+    organizationName: string;
+    locationName: string;
+    locationAddress: string;
+    timezone: string;
+  }) =>
+    apiRequest<{
+      completed: boolean;
+      user: AuthUser;
+      organization: Organization;
+      location: Location;
+    }>("/auth/onboarding", {
+      method: "POST",
+      body,
     }),
 
   forgotPassword: (body: { email: string }) =>
@@ -494,6 +542,7 @@ export type InvoiceLine = {
   page?: number | null;
   mappingReused?: boolean;
 };
+export type InvoiceAdjustment = { _id?: string; label: string; type: string; amountMoney: number; confidence?: number | null; page?: number | null };
 export type InvoiceRecord = {
   _id: string;
   locationId: string;
@@ -515,8 +564,10 @@ export type InvoiceRecord = {
   duplicateDisposition: string;
   ocrFields: Record<string, unknown>;
   lineItems: InvoiceLine[];
+  adjustments: InvoiceAdjustment[];
   highRiskConfirmed: boolean;
   originalName: string;
+  mimeType: string;
   sourceUrl?: string;
   approvedAt?: string;
 };
@@ -841,6 +892,8 @@ export const invoicesApi = {
       method: "POST",
       body: { reason },
     }),
+  remove: (id: string) =>
+    apiRequest<{ id: string; deleted: boolean }>(`/invoices/${id}`, { method: "DELETE" }),
 };
 export const vendorsApi = {
   list: (query: Record<string, string>) =>

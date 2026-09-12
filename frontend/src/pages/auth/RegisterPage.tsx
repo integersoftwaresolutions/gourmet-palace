@@ -1,15 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AuthLayout } from '../../components/auth/AuthLayout'
 import { Button, Input } from '../../components/ui'
 import { ApiClientError, authApi, fieldErrors } from '../../lib/api'
 
-export function ResetPasswordPage() {
-  const [token] = useState(
-    () => new URLSearchParams(window.location.search).get('token') || '',
-  )
+export function RegisterPage() {
   const navigate = useNavigate()
-
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -17,22 +15,11 @@ export function ResetPasswordPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (token) {
-      // Keep password-reset bearer tokens out of the browser address bar/history.
-      window.history.replaceState(window.history.state, '', window.location.pathname)
-    }
-  }, [token])
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setFormError(null)
     setErrors({})
 
-    if (!token) {
-      setFormError('This reset link is invalid or incomplete.')
-      return
-    }
     if (password !== confirm) {
       setErrors({ confirm: 'Passwords do not match' })
       return
@@ -40,14 +27,22 @@ export function ResetPasswordPage() {
 
     setLoading(true)
     try {
-      await authApi.resetPassword({ token, newPassword: password })
-      navigate('/signin', { replace: true, state: { reset: true } })
+      const normalizedEmail = email.trim()
+      await authApi.register({
+        name: name.trim(),
+        email: normalizedEmail,
+        password,
+      })
+      navigate('/verify-email', {
+        replace: true,
+        state: { email: normalizedEmail, sent: true },
+      })
     } catch (err) {
       setErrors(fieldErrors(err))
       setFormError(
         err instanceof ApiClientError
           ? err.message
-          : 'Unable to reset password. Try again.',
+          : 'Unable to create your account. Try again.',
       )
     } finally {
       setLoading(false)
@@ -56,19 +51,41 @@ export function ResetPasswordPage() {
 
   return (
     <AuthLayout
-      eyebrow="Choose a new password for your Command Center account."
-      badge="Set new password"
+      eyebrow="Create your owner account. You’ll verify your email before setting up the organization."
+      badge="Create account"
+      infoTitle="What happens next?"
+      infoBody="Verify your email, sign in, then create your organization and first location."
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate>
         <Input
-          label="New password"
+          label="Full name"
+          name="name"
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          error={errors.name}
+          required
+        />
+        <Input
+          label="Email address"
+          type="email"
+          name="email"
+          autoComplete="email"
+          placeholder="you@company.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          error={errors.email}
+          required
+        />
+        <Input
+          label="Password"
           type={showPassword ? 'text' : 'password'}
           name="password"
           autoComplete="new-password"
           placeholder="At least 8 characters"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          error={errors.newPassword || errors.password}
+          error={errors.password}
           hint="Use 8+ characters with at least one letter and one number."
           required
           rightSlot={
@@ -99,12 +116,13 @@ export function ResetPasswordPage() {
         )}
 
         <Button type="submit" tone="brand" shape="rounded" fullWidth loading={loading}>
-          Update password
+          Create account
         </Button>
 
         <p className="text-center text-sm text-card-text-muted">
+          Already have an account?{' '}
           <Link to="/signin" className="font-medium text-accent-subtle-text hover:text-accent-hover">
-            Back to sign in
+            Sign in
           </Link>
         </p>
       </form>

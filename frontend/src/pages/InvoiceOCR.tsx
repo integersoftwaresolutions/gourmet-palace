@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AppShell } from '../components/layout/AppShell'
 import { OperationsTabs } from '../components/layout/SectionTabs'
 import { QueryError } from '../components/query'
-import { Card, Select } from '../components/ui'
+import { Card, Modal, Select } from '../components/ui'
 import { invoicesApi } from '../lib/api'
 import { asyncMessage } from '../lib/asyncError'
 import { useAppState } from '../context/useAppState'
@@ -12,6 +12,9 @@ export function InvoiceOCR() {
   const [locationId, setLocationId] = useState(selectedLocationId === 'all' ? '' : selectedLocationId)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  // This route is opened by the primary Operations "Upload invoice" action.
+  // Open the modal immediately so there is no duplicate upload button on the page.
+  const [open, setOpen] = useState(true)
 
   const upload = async (file: File | null) => {
     if (!file || !locationId) return
@@ -25,6 +28,7 @@ export function InvoiceOCR() {
       })
       const res = await invoicesApi.upload({ locationId, fileName: file.name, mimeType: file.type, base64 })
       setNotice(`Invoice ${res.data.invoice.invoiceNumber || res.data.invoice._id} stored as ${res.data.invoice.status}.`)
+      setOpen(false)
     } catch (e) {
       setNotice(''); setError(asyncMessage(e, 'Upload failed'))
     }
@@ -35,7 +39,8 @@ export function InvoiceOCR() {
       <OperationsTabs value="invoices" />
       {error && <QueryError message={error} className="mt-4" />}
       {notice && <Card accentBorder="accent" className="mt-4"><p className="text-sm text-card-text-muted">{notice}</p></Card>}
-      <Card className="mt-5">
+      <Modal open={open} onClose={() => setOpen(false)} title="Upload invoice" description="Upload a PDF, JPG, or PNG for extraction." size="sm">
+        <div>
         <div className="max-w-sm">
           <p className="mb-1 text-xs text-card-text-muted">Canonical location</p>
           <Select value={locationId} onChange={setLocationId} options={locations.filter((l) => l.status === 'active').map((l) => ({ value: l.id, label: l.name }))} />
@@ -44,7 +49,8 @@ export function InvoiceOCR() {
           Upload invoice
           <input type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={(e) => void upload(e.target.files?.[0] || null)} />
         </label>
-      </Card>
+        </div>
+      </Modal>
     </AppShell>
   )
 }

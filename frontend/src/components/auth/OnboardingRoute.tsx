@@ -1,8 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/useAuth'
 
-export function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAdmin, isOnboarded, loading, isAuthenticated } = useAuth()
+export function OnboardingRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isOnboarded, loading } = useAuth()
 
   if (loading) {
     return (
@@ -13,8 +13,7 @@ export function AdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) return <Navigate to="/signin" replace />
-  if (!isOnboarded) return <Navigate to="/onboarding" replace />
-  if (!isAdmin) return <Navigate to="/" replace />
+  if (isOnboarded) return <Navigate to="/" replace />
 
   return children
 }

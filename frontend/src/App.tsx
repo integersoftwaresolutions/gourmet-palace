@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminRoute } from './components/auth/AdminRoute'
 import { GuestRoute } from './components/auth/GuestRoute'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
+import { OnboardingRoute } from './components/auth/OnboardingRoute'
 import { AuthProvider } from './context/AuthProvider'
 import { AppStateProvider } from './context/AppStateProvider'
 import { MorningBrief } from './pages/MorningBrief'
@@ -12,13 +13,15 @@ import { AdministrationIntegration } from './pages/admin/AdministrationIntegrati
 import { AdministrationSystemAndThresholds } from './pages/admin/AdministrationSystemAndThresholds'
 import { Locations } from './pages/admin/Locations'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
+import { RegisterPage } from './pages/auth/RegisterPage'
+import { VerifyEmailPage } from './pages/auth/VerifyEmailPage'
+import { OnboardingPage } from './pages/auth/OnboardingPage'
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
 import { SignInPage } from './pages/auth/SignInPage'
 import { AlertsInbox } from './pages/AlertsInbox'
 import { HomePage } from './pages/HomePage'
 import { OnlinePresenceReviews } from './pages/OnlinePresenceReviews'
 import { OnlinePresenceSeoGrowth } from './pages/OnlinePresenceSeoGrowth'
-import { InvoiceOCR } from './pages/InvoiceOCR'
 import { OperationsFoodCost } from './pages/OperationsFoodCost'
 import { OperationsIngredientInventory } from './pages/OperationsIngredientInventory'
 import { OperationsInvoices } from './pages/OperationsInvoices'
@@ -46,6 +49,22 @@ function App() {
             }
           />
           <Route
+            path="/register"
+            element={
+              <GuestRoute>
+                <RegisterPage />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/verify-email"
+            element={
+              <GuestRoute>
+                <VerifyEmailPage />
+              </GuestRoute>
+            }
+          />
+          <Route
             path="/forgot-password"
             element={
               <GuestRoute>
@@ -59,6 +78,14 @@ function App() {
               <GuestRoute>
                 <ResetPasswordPage />
               </GuestRoute>
+            }
+          />
+          <Route
+            path="/onboarding"
+            element={
+              <OnboardingRoute>
+                <OnboardingPage />
+              </OnboardingRoute>
             }
           />
           <Route
@@ -127,11 +154,7 @@ function App() {
           />
           <Route
             path="/operations/invoice-ocr"
-            element={
-              <ProtectedRoute>
-                <InvoiceOCR />
-              </ProtectedRoute>
-            }
+            element={<Navigate to="/operations" replace />}
           />
           <Route
             path="/operations/inventory"

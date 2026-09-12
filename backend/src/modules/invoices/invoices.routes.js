@@ -10,4 +10,5 @@ r.get('/:id',asyncHandler(async(req,res)=>ApiResponse.send(res,{data:{invoice:aw
 r.patch('/:id/review',asyncHandler(async(req,res)=>ApiResponse.send(res,{data:{invoice:await svc.review(req.auth,req.user,req.params.id,req.body)}})));
 r.post('/:id/approve',asyncHandler(async(req,res)=>ApiResponse.send(res,{data:{invoice:await svc.approve(req.auth,req.user,req.params.id)}})));
 r.post('/:id/reject',asyncHandler(async(req,res)=>ApiResponse.send(res,{data:{invoice:await svc.reject(req.auth,req.user,req.params.id,req.body.reason)}})));
+r.delete('/:id',asyncHandler(async(req,res)=>ApiResponse.send(res,{data:await svc.remove(req.auth,req.user,req.params.id)})));
 module.exports=r;

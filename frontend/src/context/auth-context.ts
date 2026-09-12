@@ -6,10 +6,11 @@ export type AuthContextValue = {
   permissions: Permissions | null
   loading: boolean
   isAuthenticated: boolean
+  isOnboarded: boolean
   isAdmin: boolean
-  signin: (email: string, password: string) => Promise<void>
+  signin: (email: string, password: string) => Promise<AuthUser>
   signout: () => Promise<void>
-  refreshUser: () => Promise<void>
+  refreshUser: () => Promise<AuthUser>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

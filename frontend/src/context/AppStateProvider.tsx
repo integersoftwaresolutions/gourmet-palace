@@ -22,7 +22,7 @@ function orderedRange(from: string, to: string) {
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, isOnboarded, user } = useAuth()
   const [locations, setLocations] = useState<Location[]>([])
   const [selectedLocationId, setSelectedLocationIdState] = useState(
     () => localStorage.getItem('gp.location') || 'all',
@@ -45,7 +45,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshLocations = useCallback(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !isOnboarded) {
       setLocations([])
       return
     }
@@ -64,7 +64,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     ) {
       setSelectedLocationIdState('all')
     }
-  }, [isAuthenticated, selectedLocationId, user?.role])
+  }, [isAuthenticated, isOnboarded, selectedLocationId, user?.role])
 
   useEffect(() => {
     refreshLocations().catch(() => setLocations([]))

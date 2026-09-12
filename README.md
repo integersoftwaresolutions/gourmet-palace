@@ -15,7 +15,6 @@ Requirements: Node.js 22 recommended (18+ supported by backend) and MongoDB.
 cd backend
 cp .env.example .env
 npm ci
-npm run seed:admin
 npm run dev
 ```
 
@@ -27,6 +26,8 @@ cp .env.example .env.local
 npm ci
 npm run dev
 ```
+
+Open the frontend and use **Create account**. New owners verify their email, sign in, and complete the required organization + first-location onboarding flow. Existing Gourmet Palace database users continue to sign in normally.
 
 There is **no standalone worker process**. For local operational testing, call the authenticated cron endpoint with `CRON_SECRET`, or use Administration → Integrations → **Sync selected data now**.
 
@@ -48,7 +49,7 @@ The Morning Brief page still provides **Generate / refresh** for admins. Histori
 
 ## Required Vercel environment variables
 
-Copy `.env.vercel.example` into Vercel Project Settings → Environment Variables and replace every placeholder. At minimum, configure MongoDB, session/encryption/signing secrets, OAuth credentials, `CRON_SECRET`, and an email provider if Morning Brief email delivery is required.
+Copy `.env.vercel.example` into Vercel Project Settings → Environment Variables and replace every placeholder. At minimum, configure MongoDB, session/encryption/signing secrets, OAuth credentials, `CRON_SECRET`, and an email provider. Email delivery is required for account verification and password recovery (and is also used by Morning Brief email delivery).
 
 Do **not** commit `.env`, `.env.production`, OAuth tokens, or the old `backend/storage/` directory.
 

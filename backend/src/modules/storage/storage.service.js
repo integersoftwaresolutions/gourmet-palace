@@ -123,6 +123,28 @@ async function get(ref) {
   catch { throw new ApiError(404, 'Stored file not found'); }
 }
 
+async function remove(ref) {
+  const raw = String(ref || '');
+  if (raw.startsWith('mongo:')) {
+    let objectId;
+    try { objectId = new mongoose.Types.ObjectId(raw.slice(6)); } catch { return; }
+    await gridfsBucket().delete(objectId).catch((err) => {
+      if (err?.code !== 'ENOENT') throw err;
+    });
+    return;
+  }
+  if (raw.startsWith('s3:')) {
+    const response = await s3Request('DELETE', raw.slice(3));
+    if (!response.ok && response.status !== 404) throw new ApiError(502, `Private object delete failed (${response.status})`);
+    return;
+  }
+  const relative = raw.startsWith('local:') ? raw.slice(6) : raw;
+  const normalized = path.normalize(relative).replace(/^([/\\])+/, '');
+  const absolute = path.resolve(base, normalized);
+  if (absolute !== base && !absolute.startsWith(`${base}${path.sep}`)) throw new ApiError(403, 'Invalid private object reference');
+  await fs.unlink(absolute).catch((err) => { if (err?.code !== 'ENOENT') throw err; });
+}
+
 function sign(ref, expiresSeconds = 300) {
   const exp = Math.floor(Date.now() / 1000) + Math.min(Math.max(Number(expiresSeconds) || 300, 30), 900);
   const body = `${ref}.${exp}`;
@@ -143,4 +165,4 @@ function verify(token, exp, sig) {
   return ref;
 }
 
-module.exports = { put, get, sign, verify };
+module.exports = { put, get, remove, sign, verify };

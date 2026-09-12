@@ -21,13 +21,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await authApi.me()
     setUser(res.data.user)
     setPermissions(res.data.permissions)
+    return res.data.user
   }, [])
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        await refreshUser()
+        const res = await authApi.me()
+        if (!cancelled) {
+          setUser(res.data.user)
+          setPermissions(res.data.permissions)
+        }
       } catch {
         if (!cancelled) {
           setUser(null)
@@ -40,12 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [refreshUser])
+  }, [])
 
   const signin = useCallback(
     async (email: string, password: string) => {
       await authApi.signin({ email, password })
-      await refreshUser()
+      return refreshUser()
     },
     [refreshUser],
   )
@@ -65,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions,
       loading,
       isAuthenticated: Boolean(user),
+      isOnboarded: Boolean(user?.onboardingComplete),
       isAdmin: Boolean(permissions?.isAdmin),
       signin,
       signout,

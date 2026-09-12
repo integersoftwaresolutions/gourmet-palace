@@ -64,16 +64,9 @@ const env = {
     from: process.env.SMTP_FROM || 'Gourmet Palace <noreply@gourmetpalace.com>',
   },
 
-  seed: {
-    adminEmail: process.env.SEED_ADMIN_EMAIL || 'admin@gourmetpalace.com',
-    adminPassword: process.env.SEED_ADMIN_PASSWORD || 'Password1',
-    adminName: process.env.SEED_ADMIN_NAME || 'Jimmy George',
-    orgName: process.env.SEED_ORG_NAME || 'Gourmet Palace',
-    orgSlug: process.env.SEED_ORG_SLUG || 'gourmet-palace',
-    locationsJson: process.env.SEED_LOCATIONS_JSON || '[]',
-  },
-
   passwordResetTtlMs: Number(process.env.PASSWORD_RESET_TTL_MS) || 60 * 60 * 1000,
+  emailVerificationTtlMs: Number(process.env.EMAIL_VERIFICATION_TTL_MS) || 24 * 60 * 60 * 1000,
+  verificationResendCooldownMs: Number(process.env.VERIFICATION_RESEND_COOLDOWN_MS) || 60 * 1000,
   secretEncryptionKey: process.env.SECRET_ENCRYPTION_KEY || '',
   secretStoreProvider: process.env.SECRET_STORE_PROVIDER || (process.env.VERCEL ? 'mongo' : (process.env.NODE_ENV === 'production' ? 'aws' : 'local')),
   secretStorePrefix: process.env.SECRET_STORE_PREFIX || 'gourmet-palace',
@@ -115,6 +108,8 @@ const env = {
 };
 
 if (!process.env.SESSION_SECRET && env.nodeEnv === 'production') throw new Error('SESSION_SECRET is required in production');
+if (env.nodeEnv === 'production' && env.sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
+if (env.nodeEnv === 'production' && !env.resendApiKey && !env.smtp.host) throw new Error('Configure RESEND_API_KEY or SMTP_HOST in production so verification and password-reset email can be delivered');
 if (env.nodeEnv === 'production' && !env.fileSigningSecret) throw new Error('FILE_SIGNING_SECRET is required in production');
 /** On Vercel, local secret/file stores use /tmp so a first deploy can boot without AWS. Prefer aws/s3 in real production. */
 const onVercel = process.env.VERCEL === '1';

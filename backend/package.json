@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "nodemon --watch src --ignore storage src/server.js",
     "start": "node src/server.js",
-    "seed:admin": "node src/scripts/seedAdmin.js",
     "copy:mongo": "node src/scripts/copyMongoDatabase.js",
     "import:toast-summary": "node src/scripts/importToastSalesSummary.js",
+    "migrate:invoice-dates": "node src/scripts/migrateInvoiceDates.js",
     "test": "node --test"
   },
   "engines": {

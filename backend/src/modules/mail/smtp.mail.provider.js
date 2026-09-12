@@ -7,7 +7,11 @@ function getTransporter() {
   if (transporter) return transporter;
 
   if (!env.smtp.host) {
-    // Dev fallback: log mail instead of failing when SMTP is not configured.
+    if (env.nodeEnv === 'production') {
+      throw new Error('Email provider is not configured. Set RESEND_API_KEY or SMTP_HOST.');
+    }
+
+    // Local-development fallback: make verification/reset links visible in logs.
     transporter = {
       sendMail: async (options) => {
         console.log('[mail:dev] SMTP not configured — message logged only');
@@ -34,9 +38,6 @@ function getTransporter() {
   return transporter;
 }
 
-/**
- * @param {{ to: string, subject: string, text: string, html?: string }} message
- */
 async function sendMail(message) {
   const transport = getTransporter();
   await transport.sendMail({

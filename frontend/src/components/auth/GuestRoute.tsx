@@ -1,9 +1,9 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/useAuth'
 
-/** Redirect authenticated users away from sign-in / sign-up. */
+/** Redirect signed-in users away from public auth screens. */
 export function GuestRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, isOnboarded, loading } = useAuth()
 
   if (loading) {
     return (
@@ -14,7 +14,7 @@ export function GuestRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to={isOnboarded ? '/' : '/onboarding'} replace />
   }
 
   return children

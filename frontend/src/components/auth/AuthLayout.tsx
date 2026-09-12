@@ -12,10 +12,10 @@ type AuthLayoutProps = {
 
 export function AuthLayout({
   children,
-  eyebrow = 'Sign in with your invited work account.',
-  badge = 'Invitation required',
-  infoTitle = 'Access is limited to active, allowlisted users.',
-  infoBody = 'Need access? Contact your administrator.',
+  eyebrow = 'Sign in to your Command Center account.',
+  badge = 'Secure access',
+  infoTitle = 'New to Gourmet Palace?',
+  infoBody = 'Create an account, verify your email, then set up your organization and first location.',
 }: AuthLayoutProps) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">

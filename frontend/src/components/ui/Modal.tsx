@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 import { FiX } from 'react-icons/fi'
 import { cn } from '../../lib/cn'
 
-export type ModalSize = 'sm' | 'md' | 'lg'
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
 
 export type ModalProps = {
   open: boolean
@@ -26,6 +26,7 @@ const sizeClasses: Record<ModalSize, string> = {
   sm: 'max-w-md',
   md: 'max-w-lg',
   lg: 'max-w-2xl',
+  xl: 'max-w-[96vw]',
 }
 
 const FOCUSABLE =

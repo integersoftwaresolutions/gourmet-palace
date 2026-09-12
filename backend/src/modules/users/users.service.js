@@ -80,6 +80,7 @@ async function inviteUser(organizationId, payload, actor, reqMeta = {}) {
     email,
     passwordHash,
     role: payload.role,
+    accountOrigin: 'invite',
     locationIds: payload.role === 'manager' ? payload.locationIds : [],
     isActive: true,
     invitedAt: new Date(),

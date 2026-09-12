@@ -8,10 +8,11 @@ const passwordResetTokenSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Self-registered users may reset a password before organization onboarding.
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: true,
+      default: null,
       index: true,
     },
     tokenHash: {
@@ -36,7 +37,6 @@ const passwordResetTokenSchema = new mongoose.Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-// TTL cleanup after expiry. expireAfterSeconds: 0 deletes at the expiresAt datetime.
 passwordResetTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('PasswordResetToken', passwordResetTokenSchema);
