@@ -73,6 +73,27 @@ export function ReportingCenter() {
                 <KpiCard label="Open alerts" value={String(d.alertSummary.open ?? 0)} meta={`${d.alertSummary.critical} critical`} />
               </div>
 
+              <Card title="AI summary & recommendations">
+                <p className="mb-3 text-xs text-card-text-faint">Built from this report period. Not copied from Morning Brief or SEO-only rules.</p>
+                <p className="text-sm text-card-text">{d.summary || 'No period summary is available.'}</p>
+                {(d.recommendations || []).length === 0 ? (
+                  <p className="mt-3 text-sm text-card-text-muted">No material recommendation for this period.</p>
+                ) : (
+                  <ul className="mt-4 space-y-3">
+                    {(d.recommendations || []).map((row, i) => (
+                      <li key={`${row.area}-${i}`} className="border-b border-card-border pb-3 last:border-0 last:pb-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <Pill tone={row.priority === 'high' ? 'danger' : row.priority === 'medium' ? 'warning' : 'neutral'} variant="outline" size="sm">{row.priority}</Pill>
+                          <span className="text-[10px] font-semibold tracking-widest text-card-text-faint uppercase">{row.area}</span>
+                        </div>
+                        <p className="text-sm font-medium text-card-text">{row.title}</p>
+                        <p className="mt-1 text-sm text-card-text-muted">{row.recommendation}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+
               <Card title="Daily executive brief" action={<Link to="/morning-brief" className="text-xs text-accent print:hidden">Open Morning Brief</Link>}>
                 {!d.brief ? (
                   <p className="text-sm text-card-text-muted">No current brief in this period.</p>

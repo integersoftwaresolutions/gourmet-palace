@@ -700,9 +700,18 @@ export type ReportScorecard = {
   netSales?: number;
   locationId: { _id: string; name: string } | string;
 };
+export type ReportRecommendation = {
+  priority: "high" | "medium" | "low";
+  area: string;
+  title: string;
+  recommendation: string;
+  evidence?: Record<string, unknown>;
+};
 export type ReportData = {
   range: { from: string; to: string; label?: string };
   generatedAt: string;
+  summary?: string;
+  recommendations?: ReportRecommendation[];
   brief: BriefRecord | null;
   performance: PerformanceData;
   finance: FinanceData;

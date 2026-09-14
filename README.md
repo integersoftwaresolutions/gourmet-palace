@@ -6,6 +6,7 @@ Production-oriented V1 implementation of the Gourmet Palace business/functional 
 
 - `frontend/` — React 19 + Vite UI.
 - `backend/` — Express API, MongoDB models/services, provider adapters, auth/RBAC, deterministic analytics, daily scheduler and workflows.
+- `client-handover/` — Client handover documentation as HTML files ready to upload or paste into Google Docs. See `client-handover/README.md`.
 
 ## Local setup
 
