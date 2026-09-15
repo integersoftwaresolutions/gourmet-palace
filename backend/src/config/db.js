@@ -19,7 +19,14 @@ async function connectDB() {
     const uri = mongoUri();
     if (!uri) throw new Error('MONGODB_URI is not configured');
     mongoose.set('strictQuery', true);
-    cached.promise = mongoose.connect(uri).then((conn) => {
+    cached.promise = mongoose.connect(uri, {
+      maxPoolSize: 10,
+      minPoolSize: 0,
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 120000,
+      connectTimeoutMS: 30000,
+      retryWrites: true,
+    }).then((conn) => {
       console.log(`MongoDB connected: ${conn.connection.host}`);
       return conn;
     });

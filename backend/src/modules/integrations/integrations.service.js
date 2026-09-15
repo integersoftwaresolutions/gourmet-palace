@@ -278,60 +278,151 @@ async function toastImport({ organizationId, locationId, fileName, base64, files
   let skippedSquare = 0;
   const touchedDates = new Set();
   const ticketDatesWritten = new Set();
+  const ops = [];
   for (const order of prepared.orders) {
     if (squareDates.has(order.businessDate)) {
       skippedSquare += 1;
       continue;
     }
-    const existing = await Order.findOne({
-      organizationId,
-      provider: 'toast',
-      providerOrderId: order.providerOrderId,
-    }).select('processingVersion');
-    await Order.findOneAndUpdate(
-      { organizationId, provider: 'toast', providerOrderId: order.providerOrderId },
-      {
-        locationId,
-        businessDate: order.businessDate,
-        orderState: order.orderState || 'COMPLETED',
-        sourceKind: order.sourceKind || 'ticket',
-        summaryOrderCount: order.sourceKind === 'day_summary' ? (order.summaryOrderCount || 0) : null,
-        grossMoney: order.grossMoney || 0,
-        netMoney: order.netMoney || 0,
-        discountMoney: order.discountMoney || 0,
-        refundMoney: order.refundMoney || 0,
-        voidMoney: order.voidMoney || 0,
-        guestCount: order.guestCount == null ? null : order.guestCount,
-        channel: order.channel || 'unknown',
-        items: order.items || [],
-        rawRef: archived,
-        sourceTimestamp: order.sourceTimestamp || new Date(`${order.businessDate}T12:00:00Z`),
-        ingestTimestamp: new Date(),
-        processingVersion: Number(existing?.processingVersion || 0) + 1,
-        status: order.status || 'COMPLETE',
+    const providerOrderId = (order.sourceKind || 'ticket') === 'day_summary'
+      ? `toast-summary:${locationId}:${order.businessDate}`
+      : order.providerOrderId;
+    ops.push({
+      updateOne: {
+        filter: { organizationId, provider: 'toast', providerOrderId },
+        update: {
+          $set: {
+            locationId,
+            businessDate: order.businessDate,
+            orderState: order.orderState || 'COMPLETED',
+            sourceKind: order.sourceKind || 'ticket',
+            summaryOrderCount: order.sourceKind === 'day_summary' ? (order.summaryOrderCount || 0) : null,
+            grossMoney: order.grossMoney || 0,
+            netMoney: order.netMoney || 0,
+            discountMoney: order.discountMoney || 0,
+            refundMoney: order.refundMoney || 0,
+            voidMoney: order.voidMoney || 0,
+            guestCount: order.guestCount == null ? null : order.guestCount,
+            channel: order.channel || 'unknown',
+            items: order.items || [],
+            rawRef: archived,
+            sourceTimestamp: order.sourceTimestamp || new Date(`${order.businessDate}T12:00:00Z`),
+            ingestTimestamp: new Date(),
+            status: order.status || 'COMPLETE',
+          },
+          $inc: { processingVersion: 1 },
+          $setOnInsert: {
+            organizationId,
+            provider: 'toast',
+            providerOrderId,
+          },
+        },
+        upsert: true,
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
+    });
     imported += 1;
     touchedDates.add(order.businessDate);
     if ((order.sourceKind || 'ticket') === 'ticket') ticketDatesWritten.add(order.businessDate);
   }
 
+  async function withRetry(label, fn, attempts = 5) {
+    let lastErr;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err.message || err);
+        const retryable = /ECONNRESET|ETIMEDOUT|RetryableWriteError|ResetPool|network|timed out/i.test(msg)
+          || err.errorLabelSet?.has?.('RetryableWriteError');
+        if (!retryable || attempt === attempts) throw err;
+        const waitMs = Math.min(30000, 1000 * 2 ** (attempt - 1));
+        console.warn(`[toastImport] ${label} failed (attempt ${attempt}/${attempts}): ${msg.slice(0, 160)}; retrying in ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+    throw lastErr;
+  }
+
+  for (let i = 0; i < ops.length; i += 50) {
+    const chunk = ops.slice(i, i + 50);
+    await withRetry(`Order.bulkWrite ${i}-${i + chunk.length}`, () => Order.bulkWrite(chunk, { ordered: false }));
+  }
+
   if (ticketDatesWritten.size) {
-    await Order.deleteMany({
+    await withRetry('delete day_summary overlaps', () => Order.deleteMany({
       organizationId,
       provider: 'toast',
       locationId,
       sourceKind: 'day_summary',
       businessDate: { $in: [...ticketDatesWritten] },
-    });
+    }));
   }
 
   const dates = [...touchedDates].sort();
-  for (const d of dates) {
-    await analytics.rebuildDaily({ organizationId, locationId, businessDate: d });
-    await analytics.rebuildBaselinesAndScore({ organizationId, locationId, businessDate: d });
-    await analytics.rebuildForecast({ organizationId, locationId, businessDate: d });
+  const summaryOnly = ops.length > 0
+    && prepared.orders.every((order) => (order.sourceKind || 'ticket') === 'day_summary');
+
+  async function rebuildTouchedDays() {
+    if (summaryOnly) {
+      // Identical DailyMetric shape to rebuildDaily for day_summary rows, without N Atlas round-trips.
+      const metricOps = [];
+      for (const order of prepared.orders) {
+        if (!touchedDates.has(order.businessDate)) continue;
+        const net = order.netMoney || 0;
+        const orderCount = Math.max(0, Number(order.summaryOrderCount || 0));
+        metricOps.push({
+          updateOne: {
+            filter: { organizationId, locationId, businessDate: order.businessDate, metricVersion: 1 },
+            update: {
+              $set: {
+                currency: 'USD',
+                grossMoney: order.grossMoney || net,
+                netMoney: net,
+                orderCount,
+                guestCount: order.guestCount == null ? null : order.guestCount,
+                averageTicket: orderCount ? Math.round(net / orderCount) : null,
+                refundMoney: order.refundMoney || 0,
+                voidMoney: order.voidMoney || 0,
+                discountMoney: order.discountMoney || 0,
+                channels: { dine_in: 0, takeout: 0, delivery: 0, third_party: 0, direct_online: 0, unknown: net },
+                topItems: [],
+                categories: [],
+                dataStatus: order.status === 'PARTIAL' ? 'PARTIAL' : 'COMPLETE',
+                coverage: order.status === 'PARTIAL' ? 75 : 100,
+                freshnessAt: new Date(),
+                sourceProviders: ['toast'],
+                itemCategoryStatus: 'UNAVAILABLE',
+              },
+              $unset: { reconciliation: 1 },
+            },
+            upsert: true,
+          },
+        });
+      }
+      for (let i = 0; i < metricOps.length; i += 50) {
+        const chunk = metricOps.slice(i, i + 50);
+        await withRetry(`DailyMetric.bulkWrite ${i}-${i + chunk.length}`, () => DailyMetric.bulkWrite(chunk, { ordered: false }));
+      }
+      console.log(`[toastImport] wrote ${metricOps.length} day_summary DailyMetric rows`);
+      return;
+    }
+
+    const concurrency = 4;
+    for (let i = 0; i < dates.length; i += concurrency) {
+      const chunk = dates.slice(i, i + concurrency);
+      await Promise.all(chunk.map((d) => withRetry(`rebuildDaily ${d}`, () => analytics.rebuildDaily({ organizationId, locationId, businessDate: d }))));
+      if ((i + concurrency) % 40 === 0 || i + concurrency >= dates.length) {
+        console.log(`[toastImport] rebuilt ${Math.min(i + concurrency, dates.length)}/${dates.length} days`);
+      }
+    }
+  }
+
+  await rebuildTouchedDays();
+  if (dates.length) {
+    const last = dates[dates.length - 1];
+    await withRetry(`rebuildBaselines ${last}`, () => analytics.rebuildBaselinesAndScore({ organizationId, locationId, businessDate: last }));
+    await withRetry(`rebuildForecast ${last}`, () => analytics.rebuildForecast({ organizationId, locationId, businessDate: last }));
   }
 
   rawEvent.status = 'PROCESSED';
