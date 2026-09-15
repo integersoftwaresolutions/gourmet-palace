@@ -1,7 +1,7 @@
 const mongoose=require('mongoose');
 const Order=require('../../models/Order'); const DailyMetric=require('../../models/DailyMetric'); const Location=require('../../models/Location'); const LocationScore=require('../../models/LocationScore'); const Baseline=require('../../models/Baseline'); const Forecast=require('../../models/Forecast'); const Invoice=require('../../models/Invoice'); const SeoMetric=require('../../models/SeoMetric'); const Review=require('../../models/Review'); const Alert=require('../../models/Alert');
 const settings=require('../settings/settings.service'); const {applyScope,authorizedLocationFilter}=require('../../utils/scope'); const {parseRange,previousRange,priorYearRange,addDays}=require('../../utils/dateRange'); const {parsePagination,paginatedResult}=require('../../utils/pagination'); const ApiError=require('../../utils/ApiError'); const env=require('../../config/getEnv')();
-const {median,boundedTrendExpectation,salesWeightedHealth,clusterExceptionOrders,buildWeekForecast,summarizeSeoMetrics}=require('./math');
+const {median,boundedTrendExpectation,salesWeightedHealth,clusterExceptionOrders,buildWeekForecast,summarizeSeoMetrics,isUsableDaypartOrder}=require('./math');
 const pct=(v,b)=>b?((v-b)/Math.abs(b))*100:null;
 async function rebuildDaily({organizationId,locationId,businessDate}){
   const orders=await Order.find({organizationId,locationId,businessDate}).select('+rawRef').lean();
@@ -194,21 +194,27 @@ async function performance(auth,query){
   const daypartFilter=applyScope(auth,{...rangeFilter,orderState:'COMPLETED'},query.locationId);
   const exceptionFilter=applyScope(auth,{...rangeFilter,$or:[{refundMoney:{$gt:0}},{voidMoney:{$gt:0}},{discountMoney:{$gt:0}},{orderState:'CANCELED'}]},query.locationId);
   const [daypartRows,exceptionRows]=await Promise.all([
-    Order.find(daypartFilter).select('locationId sourceTimestamp netMoney').limit(20000).lean(),
-    Order.find(exceptionFilter).select('locationId sourceTimestamp refundMoney voidMoney discountMoney channel').limit(20000).lean(),
+    Order.find(daypartFilter).select('locationId businessDate sourceTimestamp netMoney sourceKind').limit(20000).lean(),
+    Order.find(exceptionFilter).select('locationId businessDate sourceTimestamp refundMoney voidMoney discountMoney channel sourceKind').limit(20000).lean(),
   ]);
   const daypartOrder=['Overnight','8a','10a','12p','2p','4p','6p','8p','10p'];const daypartMap=new Map(daypartOrder.map((label)=>[label,0]));let stamped=0;const hours=new Set();
-  for(const order of daypartRows){const hour=hourInZone(order.sourceTimestamp,timezones.get(String(order.locationId))||'America/Los_Angeles');const label=daypartLabel(hour);if(!label)continue;stamped+=1;daypartMap.set(label,(daypartMap.get(label)||0)+Number(order.netMoney||0))}
+  const ticketRows=daypartRows.filter((order)=>(order.sourceKind||'ticket')!=='day_summary');
+  for(const order of daypartRows){
+    if(!isUsableDaypartOrder(order))continue;
+    const hour=hourInZone(order.sourceTimestamp,timezones.get(String(order.locationId))||'America/Los_Angeles');
+    const label=daypartLabel(hour);if(!label)continue;stamped+=1;if(hour!=null)hours.add(hour);daypartMap.set(label,(daypartMap.get(label)||0)+Number(order.netMoney||0));
+  }
   const prepared=[];
   for(const order of exceptionRows){
-    const hour=hourInZone(order.sourceTimestamp,timezones.get(String(order.locationId))||'America/Los_Angeles');
+    const usable=isUsableDaypartOrder(order);
+    const hour=usable?hourInZone(order.sourceTimestamp,timezones.get(String(order.locationId))||'America/Los_Angeles'):null;
     if(hour!=null)hours.add(hour);
     prepared.push({locationId:String(order.locationId),locationName:names.get(String(order.locationId))||'Location',channel:order.channel||'unknown',daypart:daypartLabel(hour),refundMoney:order.refundMoney||0,voidMoney:order.voidMoney||0,discountMoney:order.discountMoney||0});
   }
   const daypartReliable=hours.size>=2;
   const exceptionClusters=clusterExceptionOrders(prepared.map((row)=>({...row,daypart:daypartReliable?row.daypart:null})));
-  const dayparts=daypartOrder.map((label)=>({label,netMoney:daypartMap.get(label)||0}));
-  return {...summary,channels,topItems:ranked.sort((a,b)=>b.revenue-a.revenue).slice(0,20),slowItems:ranked.filter(item=>item.units>=1).sort((a,b)=>a.revenue-b.revenue).slice(0,20),categories:[...cats.entries()].map(([name,revenue])=>({name,revenue})).sort((a,b)=>b.revenue-a.revenue),locationComparisons,locationScores,summaryLine:narration.text,summaryMode:narration.mode,sourceProviders,guestSource,peerComparison,dayparts,daypartStatus:stamped?(stamped>=Math.max(1,daypartRows.length)*.5?'COMPLETE':'PARTIAL'):'UNAVAILABLE',exceptionClusters};
+  const dayparts=daypartOrder.map((label)=>({label,netMoney:stamped?daypartMap.get(label)||0:0}));
+  return {...summary,channels,topItems:ranked.sort((a,b)=>b.revenue-a.revenue).slice(0,20),slowItems:ranked.filter(item=>item.units>=1).sort((a,b)=>a.revenue-b.revenue).slice(0,20),categories:[...cats.entries()].map(([name,revenue])=>({name,revenue})).sort((a,b)=>b.revenue-a.revenue),locationComparisons,locationScores,summaryLine:narration.text,summaryMode:narration.mode,sourceProviders,guestSource,peerComparison,dayparts,daypartStatus:stamped?(stamped>=Math.max(1,ticketRows.length)*.5?'COMPLETE':'PARTIAL'):'UNAVAILABLE',exceptionClusters};
 }
 async function orders(auth,query){
   const range=parseRange(query);

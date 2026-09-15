@@ -244,7 +244,7 @@ export function PerformanceStore() {
             <Card title={`Sales by daypart · ${formatPriorBusinessDay(data.range.to)}`}>
               {data.daypartStatus === 'UNAVAILABLE' ? (
                 <p className="text-sm text-card-text-muted">
-                  Daypart sales are unavailable because order timestamps are missing for this scope.
+                  Daypart sales are unavailable until ticket-level order timestamps are present for this scope. Daily Toast summaries are not clock time.
                 </p>
               ) : (
                 <>

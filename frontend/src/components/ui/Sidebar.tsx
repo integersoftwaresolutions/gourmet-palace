@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
+import { FiLogOut, FiSidebar } from 'react-icons/fi'
 import { cn } from '../../lib/cn'
-import { FiSidebar } from 'react-icons/fi'
 
 export type SidebarItem = {
   id: string
@@ -21,6 +21,7 @@ export type SidebarFooter = {
   avatar?: ReactNode
   name: string
   role?: string
+  onSignOut?: () => void
 }
 
 export type SidebarProps = {
@@ -104,25 +105,45 @@ export function Sidebar({
       </nav>
 
       {footer && (
-        <div title={collapsed ? `${footer.name} · ${footer.role || ''}` : undefined} className="mt-4 flex shrink-0 items-center gap-3 overflow-hidden border-t border-canvas-border pt-4">
-          {footer.avatar ?? (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-text">
-              {footer.name
-                .split(' ')
-                .map((p) => p[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase()}
-            </div>
-          )}
-          <div aria-hidden={collapsed} className={cn('min-w-0 transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'opacity-0' : 'opacity-100')}>
-            <p className="truncate text-sm text-canvas-text">{footer.name}</p>
-            {footer.role && (
-              <p className="truncate text-xs text-canvas-text-faint">
-                {footer.role}
-              </p>
+        <div className="mt-4 flex shrink-0 flex-col gap-3 overflow-hidden border-t border-canvas-border pt-4">
+          <div title={collapsed ? `${footer.name} · ${footer.role || ''}` : undefined} className="flex items-center gap-3 overflow-hidden">
+            {footer.avatar ?? (
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-text">
+                {footer.name
+                  .split(' ')
+                  .map((p) => p[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()}
+              </div>
             )}
+            <div aria-hidden={collapsed} className={cn('min-w-0 transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'opacity-0' : 'opacity-100')}>
+              <p className="truncate text-sm text-canvas-text">{footer.name}</p>
+              {footer.role && (
+                <p className="truncate text-xs text-canvas-text-faint">
+                  {footer.role}
+                </p>
+              )}
+            </div>
           </div>
+          {footer.onSignOut && (
+            <button
+              type="button"
+              onClick={footer.onSignOut}
+              aria-label="Sign out"
+              title="Sign out"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-canvas-text-muted transition-colors',
+                'hover:bg-canvas-hover hover:text-canvas-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ring',
+                collapsed && 'justify-center px-0',
+              )}
+            >
+              <FiLogOut className="size-4 shrink-0" aria-hidden="true" />
+              <span aria-hidden={collapsed} className={cn('truncate transition-opacity duration-200 motion-reduce:transition-none', collapsed ? 'sr-only opacity-0' : 'opacity-100')}>
+                Sign out
+              </span>
+            </button>
+          )}
         </div>
       )}
     </aside>

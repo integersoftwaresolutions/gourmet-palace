@@ -2,14 +2,12 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { FiSettings, FiX } from 'react-icons/fi'
 import { Button, Drawer, Input, Toggle } from '../components/ui'
 import { useAuth } from '../context/useAuth'
-import { useAppState } from '../context/useAppState'
 import { ApiClientError, authApi, fieldErrors } from '../lib/api'
 
-type Props = { open: boolean; onClose: () => void }
+type Props = { open: boolean; onClose: () => void; onSignOut?: () => void }
 
-export function Settings({ open, onClose }: Props) {
-  const { user, signout, refreshUser } = useAuth()
-  const { theme, setTheme } = useAppState()
+export function Settings({ open, onClose, onSignOut }: Props) {
+  const { user, refreshUser } = useAuth()
   const [email, setEmail] = useState(true)
   const [inApp, setInApp] = useState(true)
   const [alerts, setAlerts] = useState(true)
@@ -159,38 +157,13 @@ export function Settings({ open, onClose }: Props) {
             {saving ? 'Saving…' : 'Save notification preferences'}
           </Button>
         </section>
-
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold tracking-widest text-card-text-faint uppercase">
-            Display
-          </h3>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={theme === 'dark' ? 'fill' : 'outline'}
-              onClick={() => setTheme('dark')}
-            >
-              Dark
-            </Button>
-            <Button
-              size="sm"
-              variant={theme === 'light' ? 'fill' : 'outline'}
-              onClick={() => setTheme('light')}
-            >
-              Light
-            </Button>
-          </div>
-        </section>
       </div>
 
       <div className="border-t border-card-border p-5">
         <Button
           fullWidth
           variant="outline"
-          onClick={() => {
-            onClose()
-            void signout()
-          }}
+          onClick={() => (onSignOut ? onSignOut() : onClose())}
         >
           Sign out
         </Button>

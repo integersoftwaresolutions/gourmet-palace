@@ -8,6 +8,7 @@ import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { Button, Select, Sidebar } from '../ui'
 import { AskAI } from '../../pages/AskAI'
 import { Settings } from '../../pages/Settings'
+import { SignOutConfirm } from '../auth/SignOutConfirm'
 import { cn } from '../../lib/cn'
 import { Drawer } from '../ui/Drawer'
 
@@ -48,6 +49,7 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
   const navigate = useNavigate()
   const [askOpen, setAskOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [signOutOpen, setSignOutOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('gp.sidebarCollapsed') === 'true')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const navigationTitleId = useId()
@@ -104,6 +106,12 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
     navigate(map[id] || '/overview')
   }
 
+  const requestSignOut = () => {
+    setMobileNavOpen(false)
+    setSettingsOpen(false)
+    setSignOutOpen(true)
+  }
+
   return (
     <div className={cn('flex min-h-screen min-w-0 bg-surface', contained && 'lg:h-dvh lg:min-h-0 lg:overflow-hidden print:h-auto print:overflow-visible')}>
       <Sidebar
@@ -117,7 +125,7 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
         brand={{ title: 'Gourmet Palace', subtitle: 'Command Center' }}
         items={items}
         onNavigate={go}
-        footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role }}
+        footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role, onSignOut: requestSignOut }}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3 sm:px-6 md:px-8 print:hidden">
@@ -214,11 +222,12 @@ export function AppShell({ title, subtitle, activeNav, badge, actions, headerLea
           brand={{ title: 'Gourmet Palace', subtitle: 'Command Center' }}
           items={items}
           onNavigate={go}
-          footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role }}
+          footer={{ name: user?.name || 'User', role: roleLabels[user?.role || ''] || user?.role, onSignOut: requestSignOut }}
         />
       </Drawer>
       <AskAI open={askOpen} onClose={() => setAskOpen(false)} />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onSignOut={requestSignOut} />
+      <SignOutConfirm open={signOutOpen} onClose={() => setSignOutOpen(false)} />
     </div>
   )
 }

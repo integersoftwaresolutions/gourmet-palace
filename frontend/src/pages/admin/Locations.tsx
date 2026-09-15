@@ -5,6 +5,7 @@ import { QueryError, QueryState, TableSkeleton } from '../../components/query'
 import { Button, Card, Input, Modal, Pill, Select } from '../../components/ui'
 import { locationsApi, type Location } from '../../lib/api'
 import { asyncMessage } from '../../lib/asyncError'
+import { timezoneSelectOptions } from '../../lib/timezones'
 import { useAsyncResource } from '../../hooks/useAsyncResource'
 import { useAppState } from '../../context/useAppState'
 
@@ -66,7 +67,12 @@ function LocationModal({ location, onClose, onDone }: { location?: Location; onC
     <div className="space-y-4">
       <Input label="Location name" value={name} onChange={(event) => setName(event.target.value)} />
       <Input label="Address" value={address} onChange={(event) => setAddress(event.target.value)} />
-      <Input label="IANA timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="America/Los_Angeles" />
+      <Select
+        label="IANA timezone"
+        value={timezone}
+        onChange={setTimezone}
+        options={timezoneSelectOptions(timezone)}
+      />
       <p className="-mt-2 text-xs text-card-text-faint">Business days close at 4:00 AM in this location timezone.</p>
       <Select label="Status" value={status} onChange={(value) => setStatus(value as typeof status)} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
       {error && <p className="text-sm text-danger-subtle-text">{error}</p>}

@@ -131,4 +131,17 @@ function summarizeSeoMetrics(seo,priorSeo){
     locations:[...new Set((seo||[]).map((row)=>String(row.locationId)))].length,
   };
 }
-module.exports={median,boundedTrendExpectation,salesWeightedHealth,clusterExceptionOrders,buildWeekForecast,summarizeSeoMetrics};
+/** Toast day-summary and date-only ingest stamps are noon or midnight UTC, not ticket clock time. */
+function isClockPlaceholder(sourceTimestamp,businessDate){
+  if(sourceTimestamp==null||sourceTimestamp==='')return true;
+  const ms=new Date(sourceTimestamp).getTime();
+  if(!Number.isFinite(ms))return true;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(businessDate||'')))return false;
+  return ms===Date.parse(`${businessDate}T12:00:00.000Z`)||ms===Date.parse(`${businessDate}T00:00:00.000Z`);
+}
+function isUsableDaypartOrder(order){
+  if(!order)return false;
+  if((order.sourceKind||'ticket')==='day_summary')return false;
+  return !isClockPlaceholder(order.sourceTimestamp,order.businessDate);
+}
+module.exports={median,boundedTrendExpectation,salesWeightedHealth,clusterExceptionOrders,buildWeekForecast,summarizeSeoMetrics,isClockPlaceholder,isUsableDaypartOrder};

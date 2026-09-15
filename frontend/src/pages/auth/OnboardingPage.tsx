@@ -1,9 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AuthLayout } from '../../components/auth/AuthLayout'
-import { Button, Input } from '../../components/ui'
+import { Button, Input, Select } from '../../components/ui'
 import { useAuth } from '../../context/useAuth'
 import { ApiClientError, authApi, fieldErrors } from '../../lib/api'
+import { timezoneSelectOptions } from '../../lib/timezones'
 
 function slugPreview(value: string) {
   return (
@@ -101,15 +102,15 @@ export function OnboardingPage() {
           error={errors.locationAddress}
           required
         />
-        <Input
+        <Select
           label="Timezone"
           name="timezone"
           value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
+          onChange={setTimezone}
+          options={timezoneSelectOptions(timezone)}
           error={errors.timezone}
-          hint="IANA timezone, for example America/Los_Angeles or Asia/Karachi."
-          required
         />
+        <p className="-mt-3 text-xs text-card-text-faint">Business days close at 4:00 AM in this location timezone.</p>
 
         {formError && (
           <p className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-text">

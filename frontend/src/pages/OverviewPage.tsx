@@ -274,12 +274,6 @@ export function OverviewPage() {
                     Sales-weighted average of the {scores.length || 'authorized'} location score
                     {scores.length === 1 ? '' : 's'}.
                   </p>
-                  <button
-                    type="button"
-                    className="mt-3 text-xs font-medium text-accent-subtle-text hover:text-accent"
-                  >
-                    How this is calculated →
-                  </button>
                 </div>
               </div>
             </Card>

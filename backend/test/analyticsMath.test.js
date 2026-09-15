@@ -39,6 +39,17 @@ test('exception clusters use only refund/void/discount money already on the orde
 });
 
 
+test('daypart clock rejects day summaries and noon/midnight UTC placeholders', () => {
+  const { isClockPlaceholder, isUsableDaypartOrder } = require('../src/modules/analytics/math');
+  assert.equal(isClockPlaceholder(new Date('2025-01-01T12:00:00.000Z'), '2025-01-01'), true);
+  assert.equal(isClockPlaceholder(new Date('2025-01-01T00:00:00.000Z'), '2025-01-01'), true);
+  assert.equal(isClockPlaceholder(new Date('2025-01-01T19:15:00.000Z'), '2025-01-01'), false);
+  assert.equal(isClockPlaceholder(null, '2025-01-01'), true);
+  assert.equal(isUsableDaypartOrder({ sourceKind: 'day_summary', businessDate: '2025-01-01', sourceTimestamp: new Date('2025-01-01T19:15:00.000Z') }), false);
+  assert.equal(isUsableDaypartOrder({ sourceKind: 'ticket', businessDate: '2025-01-01', sourceTimestamp: new Date('2025-01-01T12:00:00.000Z') }), false);
+  assert.equal(isUsableDaypartOrder({ sourceKind: 'ticket', businessDate: '2025-01-01', sourceTimestamp: new Date('2025-01-01T19:15:00.000Z') }), true);
+});
+
 test('SEO freshness ignores unavailable sync attempts and preserves real zero sessions', () => {
   const { summarizeSeoMetrics } = require('../src/modules/analytics/math');
   const unavailable = { source: 'ga4', status: 'UNAVAILABLE', locationId: 'a', metrics: { sessions: 0 }, freshnessAt: '2026-09-09T14:00:00Z' };
