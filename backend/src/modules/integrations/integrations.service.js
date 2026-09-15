@@ -1,4 +1,4 @@
-const crypto=require('crypto');const {withSquareLock}=require('../../workers/squareLock');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const RawIngestEvent=require('../../models/RawIngestEvent');const SeoMetric=require('../../models/SeoMetric');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/getEnv')();const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');const google=require('./google.service');
+const crypto=require('crypto');const {withSquareLock}=require('../../workers/squareLock');const Connection=require('../../models/Connection');const Location=require('../../models/Location');const Order=require('../../models/Order');const DailyMetric=require('../../models/DailyMetric');const RawIngestEvent=require('../../models/RawIngestEvent');const SeoMetric=require('../../models/SeoMetric');const JobRun=require('../../models/JobRun');const ApiError=require('../../utils/ApiError');const env=require('../../config/getEnv')();const secrets=require('../../services/providerSecrets');const storage=require('../storage/storage.service');const analytics=require('../analytics/analytics.service');const {addDays}=require('../../utils/dateRange');const {squareReconciliation,reconciliationPass}=require('../../utils/reconciliation');const google=require('./google.service');
 const squareBase=()=>env.square.environment==='production'?'https://connect.squareup.com':'https://connect.squareupsandbox.com';
 function publicConnection(c){if(!c)return null;const o=c.toJSON?c.toJSON():c;delete o.accessTokenEnc;delete o.refreshTokenEnc;delete o.secretRef;return o}
 async function list(organizationId){return (await Connection.find({organizationId}).sort({provider:1})).map(publicConnection)}
@@ -72,6 +72,12 @@ async function setMappings(organizationId,provider,mappings){
     if(mappings.itemAliases!==undefined){if(!mappings.itemAliases||typeof mappings.itemAliases!=='object'||Array.isArray(mappings.itemAliases)||Object.keys(mappings.itemAliases).length>2000)throw new ApiError(400,'itemAliases must be an object with at most 2000 aliases');for(const [source,alias] of Object.entries(mappings.itemAliases)){if(!source.trim()||source.length>240)throw new ApiError(400,'Invalid item alias source');const name=typeof alias==='string'?alias:alias?.name;if(typeof name!=='string'||!name.trim()||name.length>240||((typeof alias==='object'&&alias?.category!=null)&&(typeof alias.category!=='string'||alias.category.length>120)))throw new ApiError(400,'Invalid canonical item alias')}}
     mappings.itemAliasesApproved=mappings.itemAliasesApproved===true;
     mappings.itemAliasesApprovedAt=mappings.itemAliasesApproved?new Date().toISOString():null;
+  }
+  if(provider==='toast'&&mappings.channels){
+    const allowed=new Set(['dine_in','takeout','delivery','third_party','direct_online']);
+    for(const [key,patterns] of Object.entries(mappings.channels)){
+      if(!allowed.has(key)||!Array.isArray(patterns)||patterns.some(x=>typeof x!=='string'||x.length>120))throw new ApiError(400,'Invalid Toast channel mapping');
+    }
   }
   const conn=await Connection.findOneAndUpdate({organizationId,provider},{$set:{mappings}},{new:true});
   if(!conn)throw new ApiError(404,'Connection not found');
@@ -167,22 +173,228 @@ async function squareBackfill({organizationId,locationId,from,to}){
   const results=[];for(const businessDate of days){try{const result=await squareSync({organizationId,locationId,businessDate,force:false,ignoreRetryDelay:true});results.push({businessDate,status:result?.reconciliation&&reconciliationPass(result.reconciliation)&&result.sourceClosed&&result.paymentsStatus!=='UNAVAILABLE'?'COMPLETE':'PARTIAL',result})}catch(err){results.push({businessDate,status:'FAILED',error:err.message})}}
   const complete=results.filter(x=>x.status==='COMPLETE').length,partial=results.filter(x=>x.status==='PARTIAL').length,failed=results.filter(x=>x.status==='FAILED').length;return {from,to,days:days.length,complete,partial,failed,resumable:true,results};
 }
-function parseCsv(text){const rows=[];let row=[],cell='',q=false;for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];if(c==='"'&&q&&n==='"'){cell+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!q){if(c==='\r'&&n==='\n')i++;row.push(cell);cell='';if(row.some(v=>v!==''))rows.push(row);row=[]}else cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
-async function toastImport({organizationId,locationId,fileName,base64,mapping={}}){
-  const loc=await Location.findOne({_id:locationId,organizationId,status:'active'});if(!loc)throw new ApiError(404,'Active location not found');
-  const buffer=Buffer.from(String(base64||'').replace(/^data:[^;]+;base64,/,''),'base64');if(!buffer.length)throw new ApiError(400,'Toast export is empty');if(buffer.length>30*1024*1024)throw new ApiError(413,'Toast export exceeds 30 MB application upload limit');
-  const archiveHash=crypto.createHash('sha256').update(buffer).digest('hex');const archived=await storage.put({organizationId,key:`toast-archive/${Date.now()}-${pathSafe(fileName||'toast-export.csv')}`,buffer});
-  const squareConfig=await Connection.findOne({organizationId,provider:'square'}).lean();const approvedAliases=squareConfig?.mappings?.itemAliasesApproved===true?(squareConfig.mappings.itemAliases||{}):{};mapping={...mapping,itemAliases:{...approvedAliases,...(mapping.itemAliases||{})}};
-  const rows=parseCsv(buffer.toString('utf8'));if(rows.length<2)throw new ApiError(400,'Toast CSV has no data rows');const headers=rows[0].map(x=>x.trim());const idx=name=>headers.findIndex(h=>h.toLowerCase()===String(mapping[name]||name).toLowerCase());
-  const cols={id:idx('orderId'),date:idx('businessDate'),net:idx('netSales'),gross:idx('grossSales'),discount:idx('discounts'),refund:idx('refunds'),channel:idx('channel'),itemId:idx('itemId'),itemName:idx('itemName'),itemCategory:idx('itemCategory'),itemQuantity:idx('itemQuantity'),itemNet:idx('itemNetSales')};if(cols.id<0||cols.date<0||cols.net<0)throw new ApiError(400,'Toast mapping requires orderId, businessDate and netSales columns');
-  const money=v=>{const n=Number(String(v??'0').replace(/[$,]/g,''));return Number.isFinite(n)?Math.round(n*100):0};const qty=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
-  const groups=new Map();for(const r of rows.slice(1)){const id=String(r[cols.id]||'').trim(),businessDate=String(r[cols.date]||'').slice(0,10);if(!id||!/^\d{4}-\d{2}-\d{2}$/.test(businessDate))continue;let g=groups.get(id);if(!g){const channelRaw=cols.channel>=0?String(r[cols.channel]||''):'';let channel='unknown';for(const [k,patterns]of Object.entries(mapping.channels||{}))if((patterns||[]).some(p=>channelRaw.toLowerCase().includes(String(p).toLowerCase())))channel=k;g={providerOrderId:id,businessDate,grossMoney:cols.gross>=0?money(r[cols.gross]):money(r[cols.net]),netMoney:money(r[cols.net]),discountMoney:cols.discount>=0?money(r[cols.discount]):0,refundMoney:cols.refund>=0?money(r[cols.refund]):0,channel,items:[]};groups.set(id,g)}
-    if(cols.itemName>=0&&String(r[cols.itemName]||'').trim()){const rawName=String(r[cols.itemName]).trim();const alias=(mapping.itemAliases||{})[rawName]||(cols.itemId>=0?(mapping.itemAliases||{})[String(r[cols.itemId]||'')]:null);const normalized=typeof alias==='string'?alias:alias?.name||rawName;g.items.push({providerItemId:cols.itemId>=0?String(r[cols.itemId]||''):'',name:normalized,category:(typeof alias==='object'&&alias?.category)|| (cols.itemCategory>=0?String(r[cols.itemCategory]||''):'') ,quantity:cols.itemQuantity>=0?qty(r[cols.itemQuantity]):0,grossMoney:cols.itemNet>=0?money(r[cols.itemNet]):0,netMoney:cols.itemNet>=0?money(r[cols.itemNet]):0})}
-  }
-  if(!groups.size)throw new ApiError(400,'Toast CSV did not contain any valid order rows');const prior=await RawIngestEvent.findOne({organizationId,provider:'toast',locationId,businessDate:'HISTORICAL_IMPORT',capability:'orders'}).sort({processingVersion:-1}).lean();const processingVersion=Number(prior?.processingVersion||0)+1;const rawEvent=await RawIngestEvent.create({organizationId,locationId,provider:'toast',businessDate:'HISTORICAL_IMPORT',capability:'orders',rawRef:archived,contentHash:archiveHash,recordCount:groups.size,processingVersion,status:'RECEIVED',metadata:{fileName:pathSafe(fileName||'toast-export.csv'),bytes:buffer.length}});
-  let imported=0;for(const g of groups.values()){const existing=await Order.findOne({organizationId,provider:'toast',providerOrderId:g.providerOrderId}).select('processingVersion');await Order.findOneAndUpdate({organizationId,provider:'toast',providerOrderId:g.providerOrderId},{locationId:g.locationId||locationId,businessDate:g.businessDate,orderState:'COMPLETED',grossMoney:g.grossMoney,netMoney:g.netMoney,discountMoney:g.discountMoney,refundMoney:g.refundMoney,voidMoney:0,channel:g.channel,items:g.items,rawRef:archived,sourceTimestamp:new Date(`${g.businessDate}T12:00:00Z`),ingestTimestamp:new Date(),processingVersion:Number(existing?.processingVersion||0)+1,status:'COMPLETE'},{upsert:true,new:true,setDefaultsOnInsert:true});imported++}
-  const dates=[...new Set([...groups.values()].map(g=>g.businessDate))].sort();for(const d of dates){await analytics.rebuildDaily({organizationId,locationId,businessDate:d});await analytics.rebuildBaselinesAndScore({organizationId,locationId,businessDate:d});await analytics.rebuildForecast({organizationId,locationId,businessDate:d})}
-  rawEvent.status='PROCESSED';rawEvent.metadata={...(rawEvent.metadata||{}),imported,dates:dates.length};await rawEvent.save();await Connection.findOneAndUpdate({organizationId,provider:'toast'},{status:'READY',capabilities:{historicalImport:true,live:false},metadata:{lastArchiveKey:archived,lastArchiveHash:archiveHash,lastImportRows:imported,lastImportDates:dates.length,lastOriginalName:pathSafe(fileName||'toast-export.csv')},lastSuccessAt:new Date()},{upsert:true,new:true});return {imported,archiveKey:archived,archiveHash,dates:dates.length,rawIngestId:rawEvent.id}
+const { prepareToastImport } = require('./toastImport');
+
+function decodeUploadBuffer(base64) {
+  return Buffer.from(String(base64 || '').replace(/^data:[^;]+;base64,/, ''), 'base64');
 }
-const pathSafe=s=>String(s).replace(/[^a-zA-Z0-9._-]/g,'_');
-module.exports={list,squareConnect,squareCallback,discoverSquare,setMappings,squareSync,squareManualSync,squareBackfill,toastImport,...google};
+
+function normalizeToastFiles({ fileName, base64, files }) {
+  const list = Array.isArray(files) && files.length
+    ? files
+    : (base64 || fileName ? [{ fileName: fileName || 'toast-export.csv', base64 }] : []);
+  return list.map((file, index) => {
+    const name = pathSafe(file.fileName || file.name || `toast-export-${index + 1}.csv`);
+    const buffer = Buffer.isBuffer(file.buffer) ? file.buffer : decodeUploadBuffer(file.base64);
+    return { fileName: name, buffer };
+  }).filter((file) => file.buffer.length);
+}
+
+async function toastImport({ organizationId, locationId, fileName, base64, files, mapping = {} }) {
+  const loc = await Location.findOne({ _id: locationId, organizationId, status: 'active' });
+  if (!loc) throw new ApiError(404, 'Active location not found');
+
+  const uploadFiles = normalizeToastFiles({ fileName, base64, files });
+  if (!uploadFiles.length) throw new ApiError(400, 'Toast export is empty');
+  const totalBytes = uploadFiles.reduce((sum, file) => sum + file.buffer.length, 0);
+  if (totalBytes > 50 * 1024 * 1024) throw new ApiError(413, 'Toast export exceeds 50 MB application upload limit');
+
+  const JSZip = require('jszip');
+  const archiveZip = new JSZip();
+  for (const file of uploadFiles) {
+    archiveZip.file(file.fileName, file.buffer);
+  }
+  const archivePayload = Buffer.from(await archiveZip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+  const archiveHash = crypto.createHash('sha256').update(archivePayload).digest('hex');
+  const archiveName = uploadFiles.length === 1
+    ? uploadFiles[0].fileName
+    : `toast-bundle-${uploadFiles.length}-files.zip`;
+  const archived = await storage.put({
+    organizationId,
+    key: `toast-archive/${Date.now()}-${archiveName}`,
+    buffer: archivePayload,
+  });
+
+  const squareConfig = await Connection.findOne({ organizationId, provider: 'square' }).lean();
+  const toastConfig = await Connection.findOne({ organizationId, provider: 'toast' }).lean();
+  const approvedAliases = squareConfig?.mappings?.itemAliasesApproved === true
+    ? (squareConfig.mappings.itemAliases || {})
+    : {};
+  const itemAliases = { ...approvedAliases, ...(mapping.itemAliases || {}) };
+  const channelMap = {
+    ...(toastConfig?.mappings?.channels || {}),
+    ...(mapping.channels || {}),
+  };
+
+  let prepared;
+  try {
+    prepared = await prepareToastImport({
+      files: uploadFiles,
+      mapping,
+      channelMap,
+      itemAliases,
+    });
+  } catch (err) {
+    throw new ApiError(400, String(err.message || err));
+  }
+
+  const squareDates = new Set((await DailyMetric.find({
+    organizationId,
+    locationId,
+    sourceProviders: 'square',
+  }).select('businessDate').lean()).map((row) => row.businessDate));
+
+  const prior = await RawIngestEvent.findOne({
+    organizationId,
+    provider: 'toast',
+    locationId,
+    businessDate: 'HISTORICAL_IMPORT',
+    capability: 'orders',
+  }).sort({ processingVersion: -1 }).lean();
+  const processingVersion = Number(prior?.processingVersion || 0) + 1;
+  const rawEvent = await RawIngestEvent.create({
+    organizationId,
+    locationId,
+    provider: 'toast',
+    businessDate: 'HISTORICAL_IMPORT',
+    capability: 'orders',
+    rawRef: archived,
+    contentHash: archiveHash,
+    recordCount: prepared.orders.length,
+    processingVersion,
+    status: 'RECEIVED',
+    metadata: {
+      fileNames: uploadFiles.map((f) => f.fileName),
+      bytes: totalBytes,
+      formats: prepared.formats,
+      expandedKinds: prepared.expandedKinds,
+      warnings: prepared.warnings,
+      rollups: prepared.rollups,
+      stats: prepared.stats,
+    },
+  });
+
+  let imported = 0;
+  let skippedSquare = 0;
+  const touchedDates = new Set();
+  const ticketDatesWritten = new Set();
+  for (const order of prepared.orders) {
+    if (squareDates.has(order.businessDate)) {
+      skippedSquare += 1;
+      continue;
+    }
+    const existing = await Order.findOne({
+      organizationId,
+      provider: 'toast',
+      providerOrderId: order.providerOrderId,
+    }).select('processingVersion');
+    await Order.findOneAndUpdate(
+      { organizationId, provider: 'toast', providerOrderId: order.providerOrderId },
+      {
+        locationId,
+        businessDate: order.businessDate,
+        orderState: order.orderState || 'COMPLETED',
+        sourceKind: order.sourceKind || 'ticket',
+        summaryOrderCount: order.sourceKind === 'day_summary' ? (order.summaryOrderCount || 0) : null,
+        grossMoney: order.grossMoney || 0,
+        netMoney: order.netMoney || 0,
+        discountMoney: order.discountMoney || 0,
+        refundMoney: order.refundMoney || 0,
+        voidMoney: order.voidMoney || 0,
+        guestCount: order.guestCount == null ? null : order.guestCount,
+        channel: order.channel || 'unknown',
+        items: order.items || [],
+        rawRef: archived,
+        sourceTimestamp: order.sourceTimestamp || new Date(`${order.businessDate}T12:00:00Z`),
+        ingestTimestamp: new Date(),
+        processingVersion: Number(existing?.processingVersion || 0) + 1,
+        status: order.status || 'COMPLETE',
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    imported += 1;
+    touchedDates.add(order.businessDate);
+    if ((order.sourceKind || 'ticket') === 'ticket') ticketDatesWritten.add(order.businessDate);
+  }
+
+  if (ticketDatesWritten.size) {
+    await Order.deleteMany({
+      organizationId,
+      provider: 'toast',
+      locationId,
+      sourceKind: 'day_summary',
+      businessDate: { $in: [...ticketDatesWritten] },
+    });
+  }
+
+  const dates = [...touchedDates].sort();
+  for (const d of dates) {
+    await analytics.rebuildDaily({ organizationId, locationId, businessDate: d });
+    await analytics.rebuildBaselinesAndScore({ organizationId, locationId, businessDate: d });
+    await analytics.rebuildForecast({ organizationId, locationId, businessDate: d });
+  }
+
+  rawEvent.status = 'PROCESSED';
+  rawEvent.metadata = {
+    ...(rawEvent.metadata || {}),
+    imported,
+    skippedSquare,
+    dates: dates.length,
+    dateFrom: dates[0] || null,
+    dateTo: dates[dates.length - 1] || null,
+  };
+  await rawEvent.save();
+
+  await Connection.findOneAndUpdate(
+    { organizationId, provider: 'toast' },
+    {
+      status: 'READY',
+      capabilities: { historicalImport: true, live: false },
+      metadata: {
+        lastArchiveKey: archived,
+        lastArchiveHash: archiveHash,
+        lastImportRows: imported,
+        lastImportDates: dates.length,
+        lastOriginalName: uploadFiles.map((f) => f.fileName).join(', '),
+        lastFormats: prepared.formats,
+        lastWarnings: prepared.warnings,
+        lastRollups: prepared.rollups,
+        lastStats: prepared.stats,
+        lastSkippedSquare: skippedSquare,
+        importedAt: new Date().toISOString(),
+      },
+      lastSuccessAt: new Date(),
+      lastError: null,
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+
+  return {
+    imported,
+    skippedSquare,
+    archiveKey: archived,
+    archiveHash,
+    dates: dates.length,
+    dateFrom: dates[0] || null,
+    dateTo: dates[dates.length - 1] || null,
+    formats: prepared.formats,
+    warnings: prepared.warnings,
+    stats: prepared.stats,
+    rollups: prepared.rollups,
+    rawIngestId: rawEvent.id,
+  };
+}
+
+const pathSafe = (s) => String(s).replace(/[^a-zA-Z0-9._-]/g, '_');
+module.exports = {
+  list,
+  squareConnect,
+  squareCallback,
+  discoverSquare,
+  setMappings,
+  squareSync,
+  squareManualSync,
+  squareBackfill,
+  toastImport,
+  ...google,
+};

@@ -76,7 +76,14 @@ r.put('/:provider/mappings', asyncHandler(async (req, res) => {
 }));
 r.post('/toast/import', asyncHandler(async (req, res) => {
   const data = await svc.toastImport({ organizationId: req.auth.organizationId, ...req.body });
-  await log(req, 'integration.toast.historical_import', { locationId: req.body.locationId, rows: data.imported, archiveKey: data.archiveKey });
+  await log(req, 'integration.toast.historical_import', {
+    locationId: req.body.locationId,
+    rows: data.imported,
+    skippedSquare: data.skippedSquare,
+    dates: data.dates,
+    formats: data.formats,
+    archiveKey: data.archiveKey,
+  });
   ApiResponse.send(res, { data });
 }));
 module.exports = r;

@@ -26,9 +26,11 @@
     "express-session": "^1.19.0",
     "helmet": "^8.0.0",
     "joi": "^17.13.3",
+    "jszip": "^3.10.2",
     "mongoose": "^8.9.5",
     "morgan": "^1.10.0",
-    "nodemailer": "^9.0.4"
+    "nodemailer": "^9.0.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/express-session": "^1.19.0",

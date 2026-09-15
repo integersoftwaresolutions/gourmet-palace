@@ -203,27 +203,44 @@ export function AdministrationIntegration() {
       setBackfillBusy(false);
     }
   };
-  const toast = async (file: File | null) => {
-    if (!file || !toastLoc) return;
-    setNotice("Importing historical Toast export…");
+  const toast = async (fileList: FileList | File[] | null) => {
+    const selected = fileList ? Array.from(fileList as FileList) : [];
+    if (!selected.length || !toastLoc) return;
+    setNotice(`Importing ${selected.length} Toast export file(s)…`);
+    setActionError("");
     try {
-      const base64 = await toBase64(file);
+      const files = [];
+      for (const file of selected) {
+        files.push({
+          fileName: file.name,
+          base64: await toBase64(file),
+        });
+      }
       const r = await integrationsApi.toastImport({
         locationId: toastLoc,
-        fileName: file.name,
-        base64,
-        mapping: {
-          orderId: "orderId",
-          businessDate: "businessDate",
-          netSales: "netSales",
-          grossSales: "grossSales",
-          discounts: "discounts",
-          refunds: "refunds",
-          channel: "channel",
-        },
+        files,
+        mapping: {},
       });
+      const formats = Array.isArray(r.data.formats)
+        ? (r.data.formats as Array<Record<string, unknown>>)
+            .map((f) => String(f.kind || ""))
+            .filter(Boolean)
+            .join(", ")
+        : "";
+      const warnCount = Array.isArray(r.data.warnings)
+        ? (r.data.warnings as unknown[]).length
+        : 0;
       setNotice(
-        `Toast history imported: ${String(r.data.imported || 0)} rows. Original archive retained privately.`,
+        `Toast history imported: ${String(r.data.imported || 0)} order/day row(s) across ${String(r.data.dates || 0)} day(s)` +
+          (r.data.dateFrom && r.data.dateTo
+            ? ` (${String(r.data.dateFrom)} → ${String(r.data.dateTo)})`
+            : "") +
+          (r.data.skippedSquare
+            ? `; skipped ${String(r.data.skippedSquare)} Square-owned day row(s)`
+            : "") +
+          (formats ? `; formats: ${formats}` : "") +
+          (warnCount ? `; ${warnCount} note(s)` : "") +
+          ". Original archive retained privately.",
       );
       reload();
     } catch (e) {
@@ -886,9 +903,10 @@ export function AdministrationIntegration() {
 
             <Card title="Toast historical export · one-time only">
               <p className="text-sm text-card-text-muted">
-                Toast is not a live V1 connector. Upload the client export once;
-                the original file is retained unchanged in private storage and
-                imported into provider-neutral canonical history.
+                Toast is not a live V1 connector. Upload the client&apos;s Toast
+                exports once; originals are retained in private storage and mapped
+                into canonical history. Square remains authoritative on overlapping
+                business dates.
               </p>
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <div className="w-full sm:w-64">
@@ -911,22 +929,37 @@ export function AdministrationIntegration() {
                   Download sample CSV
                 </a>
                 <label className="inline-flex h-10 cursor-pointer items-center rounded-lg bg-brand px-4 text-sm font-semibold text-brand-text">
-                  Upload Toast CSV
+                  Upload Toast export(s)
                   <input
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,.xlsx,.xls,.zip,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip"
+                    multiple
                     className="hidden"
-                    onChange={(e) => void toast(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      void toast(e.target.files);
+                      e.target.value = "";
+                    }}
                   />
                 </label>
               </div>
-              <p className="mt-2 text-xs text-card-text-faint">
-                Required headers: orderId, businessDate, netSales. Optional:
-                grossSales, discounts, refunds, channel, itemId, itemName,
-                itemCategory, itemQuantity, itemNetSales. Money is in dollars.
-                Repeat orderId for line items. The original file is retained
-                unchanged before parsing.
-              </p>
+              <div className="mt-3 space-y-1 text-xs text-card-text-faint">
+                <p>
+                  Accepted Toast standards (auto-detected):{" "}
+                  <span className="text-card-text-muted">
+                    Sales Summary .xlsx / Sales by day.csv (and zip of CSVs);
+                    OrderDetails.csv; ItemSelectionDetails.csv; PaymentDetails.csv;
+                    or the app sample order CSV.
+                  </span>
+                </p>
+                <p>
+                  Best completeness: upload{" "}
+                  <span className="text-card-text-muted">
+                    OrderDetails + ItemSelectionDetails
+                  </span>{" "}
+                  together. Sales Summary alone imports daily net sales, orders, and
+                  guests (item/channel charts stay empty for those days).
+                </p>
+              </div>
             </Card>
           </div>
         )}
